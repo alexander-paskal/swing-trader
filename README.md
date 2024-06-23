@@ -21,6 +21,27 @@ It will return a dictionary of values {
   volume_daily: float
   volume_weekly: 4-float
   position_owned: bool
+  ticks_bought: int # number of ticks since bought
 }
 
-I
+Env:
+- returns last 50 of each value as a time series
+
+Action Space:
+- Just buy to start
+
+Reward:
+- percentage gain - market percentage gain over next 20 ticks
+- minus 2 percent to discourage frivolous buying
+
+Model:
+- MLP to flush out pipes
+- Switch to GRU or attention based 
+
+Policy:
+- PPO to start
+
+Train/Test
+- Pick random 800 stocks to train and sample
+- Pick 200 for Val
+- 200 for test
