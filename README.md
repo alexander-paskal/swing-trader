@@ -45,3 +45,7 @@ Train/Test
 - Pick random 800 stocks to train and sample
 - Pick 200 for Val
 - 200 for test
+
+# Ideas:
+ - use of GNNS - find ways to build a heterograph of stocks in different sectors, or other form of connectivity. Then I can construct a dynamic graph of their price movements
+ 
