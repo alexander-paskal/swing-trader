@@ -3,8 +3,8 @@ import os
 import datetime
 from typing import *
 from typing_extensions import TypedDict, Self
-import gym
-import gymnasium
+import gymnasium as gym
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 import random
 
@@ -25,6 +25,13 @@ class Action(TypedDict):
     buy: bool
     sell: bool
 
+    @classmethod
+    def space(cls) -> Box:
+        return Box(
+            low=np.zeros(2),
+            high=np.ones(2),
+        )
+
     def serialize(self) -> np.array:
         return np.array([
             float(self["buy"]),
@@ -40,6 +47,14 @@ class State(TypedDict):
     volume: float
     
     @classmethod
+    def space(cls, history=0) -> Box:
+        l = (history + 1) * 6
+        return Box(
+            low=-np.inf*np.ones(l),
+            high=np.inf*np.ones(l),
+        )
+
+    @classmethod
     def serialize(cls, self) -> np.array:
 
         
@@ -49,7 +64,7 @@ class State(TypedDict):
             self["low"] / 1000,
             self["open"] / 1000,
             self["close"] / 1000,
-            np.log10(self["volume"] + 1),
+            np.log10(self["volume"] + 1.01),
         ])
     
     @classmethod
@@ -93,11 +108,18 @@ class ICs(TypedDict):
             print(f"Skipping {name}")
             return cls.from_random()
 
+        
         cols = lines[0].replace(" ","").split(",")
-        line = random.choice(lines).split(",")
+        line_ind = random.randint(0, len(lines) - 1)
+        line = lines[line_ind].split(",")
 
         record = {k: v for k, v in zip(cols, line)}
         
+        if record["Open"] == 0 or record["Volume"] == 0:
+           line = lines[line_ind + 1].split(",")
+           record = {k: v for k, v in zip(cols, line)}
+
+
         date = record["Date"].split(" ")[0]
         date = datetime.datetime.strptime(date, DT_PATTERN)
 
@@ -105,7 +127,6 @@ class ICs(TypedDict):
             "name": name.replace("-weekly.csv",""),
             "date": date
         })
-
 
 class Transaction(TypedDict):
     name: str
@@ -132,12 +153,19 @@ class Env(gym.Env):
         else:
             self.ics = ics
 
+        
         # set config values
+        config = {} if config is None else config
         self.config = config
         self.rollout_length = config.get("rollout_length") if "rollout_length" in config else 50
         self.market = config.get("market") if "market" in config else "QQQ"
         self.min_hold = config.get("min_hold") if "min_hold" in config else 1
         self.state_history_length = config.get("state_history_length") if "state_history_length" in config else 0
+
+        # Gym components
+        self.action_space = Action.space()
+        self.observation_space = State.space(self.state_history_length)
+
 
         # set internals
         self.reset(randomize = False)
@@ -180,7 +208,7 @@ class Env(gym.Env):
         self.ics["name"] = name
         return data, records, raw_data, raw_records, raw_index
 
-    def reset(self, *, randomize: bool = False):
+    def reset(self, *, seed=None, options=None, randomize: bool = True):
         if randomize:
             self._randomize_ics()
         self.df, self.records, self.raw_df, self.raw_records, self.raw_index = self._load_data()
@@ -194,13 +222,15 @@ class Env(gym.Env):
         self.ticks_holding = 0
         self.history = []
 
-        return State.serialize(self.state()), {"env_state": "reset"}
+        # return State.serialize(self.state()), {"env_state": "reset"}
+        return self.state_arr(), {}
         
     def step(
             self,
             action: float
     ):
 
+        self.dump("log.json")
         buy, sell = action
 
     
@@ -242,20 +272,10 @@ class Env(gym.Env):
         # step the sim
         self.ind += 1
 
-        record = self.records[self.ind]
-        state: State = State({
-            "high": record["High"],
-            "low": record["Low"],
-            "open": record["Open"],
-            "close": record["Close"],
-            "volume": record["Volume"],
-            "bought": self.holding
-        })
-
         terminated = False
         truncated = False
         reward = 0
-        infos = self.history
+        infos = {"history": self.history}
         if any([
             self.ind == len(self.records) - 1,
             self.ind == self.rollout_length - 1
@@ -277,12 +297,7 @@ class Env(gym.Env):
 
             reward = self.reward()
 
-        state_arr = State.serialize(state)
-        if self.state_history_length > 1:
-            state_history_arr = np.concatenate([
-                State.serialize(s) for s in self.state_history(self.state_history_length)
-            ])
-            state_arr = np.concatenate([state_history_arr, state_arr])
+        state_arr = self.state_arr()
 
         return (
             state_arr,
@@ -314,8 +329,19 @@ class Env(gym.Env):
             "volume": record["Volume"],
             "bought": self.holding
         })
+        
         return state
     
+    def state_arr(self) -> np.array:
+        state_arr = State.serialize(self.state())
+        if self.state_history_length > 0:
+            state_history_arr = np.concatenate([
+                State.serialize(s) for s in self.state_history(self.state_history_length)
+            ])
+            state_arr = np.concatenate([state_history_arr, state_arr])
+        
+        return state_arr
+
     def state_history(self, length: int) -> list[State]:
         og_ind = self.ind
         states = []
@@ -354,7 +380,7 @@ class Env(gym.Env):
             "history": self.history,
             "multiplier": self.multiplier,
             "reward": self.reward(),
-            "market_multiplier": self.market_multiplier,
+            "market_multiplier": self.market_multiplier(),
             "raw_index": self.raw_index
         }, f, sort_keys=True, indent=4, default=str)
         f.close()

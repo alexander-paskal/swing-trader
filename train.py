@@ -68,55 +68,74 @@ parser.add_argument(
 )
 
 
-class SimpleCorridor(gym.Env):
-    """Example of a custom env in which you have to walk down a corridor.
+from env import Env as StockEnv, Config
 
-    You can configure the length of the corridor via the env config."""
+stock_config = Config(
+    rollout_length=64,
+    market="QQQ",
+    min_hold=2,
+    state_history_length=49
+)
 
-    def __init__(self, config: EnvContext):
-        self.end_pos = config["corridor_length"]
-        self.cur_pos = 0
-        self.action_space = Discrete(2)
-        self.observation_space = Box(0.0, self.end_pos, shape=(1,), dtype=np.float32)
-        # Set the seed. This is only used for the final (reach goal) reward.
-        self.reset(seed=config.worker_index * config.num_workers)
+# class SimpleCorridor(gym.Env):
+#     """Example of a custom env in which you have to walk down a corridor.
 
-    def reset(self, *, seed=None, options=None):
-        random.seed(seed)
-        self.cur_pos = 0
-        return [self.cur_pos], {}
+#     You can configure the length of the corridor via the env config."""
 
-    def step(self, action):
-        assert action in [0, 1], action
-        if action == 0 and self.cur_pos > 0:
-            self.cur_pos -= 1
-        elif action == 1:
-            self.cur_pos += 1
-        done = truncated = self.cur_pos >= self.end_pos
-        # Produce a random reward when we reach the goal.
-        return (
-            [self.cur_pos],
-            random.random() * 2 if done else -0.1,
-            done,
-            truncated,
-            {},
-        )
+#     def __init__(self, config: EnvContext):
+#         self.end_pos = config["corridor_length"]
+#         self.cur_pos = 0
+#         self.action_space = Discrete(2)
+#         self.observation_space = Box(0.0, self.end_pos, shape=(1,), dtype=np.float32)
+#         # Set the seed. This is only used for the final (reach goal) reward.
+#         self.reset(seed=config.worker_index * config.num_workers)
+
+#     def reset(self, *, seed=None, options=None):
+#         random.seed(seed)
+#         self.cur_pos = 0
+#         return [self.cur_pos], {}
+
+#     def step(self, action):
+#         assert action in [0, 1], action
+#         if action == 0 and self.cur_pos > 0:
+#             self.cur_pos -= 1
+#         elif action == 1:
+#             self.cur_pos += 1
+#         done = truncated = self.cur_pos >= self.end_pos
+#         # Produce a random reward when we reach the goal.
+#         return (
+#             [self.cur_pos],
+#             random.random() * 2 if done else -0.1,
+#             done,
+#             truncated,
+#             {},
+#         )
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
     print(f"Running with following CLI options: {args}")
 
-    ray.init(local_mode=args.local_mode)
+    ray.init(
+        local_mode=args.local_mode,
+        # num_cpus=0,
+    )
 
     # Can also register the env creator function explicitly with:
     # register_env("corridor", lambda config: SimpleCorridor(config))
+
+    # from ray.rllib.utils import check_env
+    # env = StockEnv(stock_config)
+    # result = check_env(env)
+    # print(result)
+    # import sys
+    # sys.exit()
 
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
         # or "corridor" if registered above
-        .environment(SimpleCorridor, env_config={"corridor_length": 5})
+        .environment(StockEnv, env_config={"corridor_length": 5})
         .framework(args.framework)
         .rollouts(num_rollout_workers=1)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
