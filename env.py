@@ -121,8 +121,12 @@ class ICs(TypedDict):
 
 
         date = record["Date"].split(" ")[0]
-        date = datetime.datetime.strptime(date, DT_PATTERN)
-
+        try:
+            date = datetime.datetime.strptime(date, DT_PATTERN)
+        except ValueError:
+            print(f"Skipping {name}")
+            return cls.from_random()
+        
         return cls({
             "name": name.replace("-weekly.csv",""),
             "date": date
@@ -141,6 +145,7 @@ class Config(TypedDict):
     market: str
     min_hold: int
     state_history_length: int
+    clip_reward: float
 
 class Env(gym.Env):
 
@@ -161,6 +166,7 @@ class Env(gym.Env):
         self.market = config.get("market") if "market" in config else "QQQ"
         self.min_hold = config.get("min_hold") if "min_hold" in config else 1
         self.state_history_length = config.get("state_history_length") if "state_history_length" in config else 0
+        self.clip_reward = config.get("clip_reward") if "clip_reward" in config else 1
 
         # Gym components
         self.action_space = Action.space()
@@ -232,9 +238,14 @@ class Env(gym.Env):
 
         self.dump("log.json")
         buy, sell = action
-
     
-        if buy > 0.5 and not self.holding:
+        if all([
+            self.ind >= len(self.records) - 1,
+            buy > 0.5 ,
+            not self.holding,
+            self.records[self.ind + 1]["Open"] > 0
+        ]):
+            
             self.holding = True
             self.buy_date = self.records[self.ind]["Date"]
             self.buy_price = self.records[self.ind+1]["Open"]
@@ -277,8 +288,8 @@ class Env(gym.Env):
         reward = 0
         infos = {"history": self.history}
         if any([
-            self.ind == len(self.records) - 1,
-            self.ind == self.rollout_length - 1
+            self.ind >= len(self.records) - 1,
+            self.ind >= self.rollout_length - 1
         ]):
             terminated = True
             truncated = True if self.ind == len(self.records) - 1 else False
@@ -317,7 +328,9 @@ class Env(gym.Env):
         Our return - market return - 2 percent fees
         """
 
-        return self.multiplier - self.market_multiplier() - 0.02
+        reward =  self.multiplier - self.market_multiplier() - 0.02
+        if self.clip_reward:
+            return min([reward, self.clip_reward])
     
     def state(self) -> State:
         record = self.records[self.ind]
@@ -360,7 +373,7 @@ class Env(gym.Env):
         return self.ics["date"]
     
     def end_date(self) -> datetime.datetime:
-        if len(self.records) < self.rollout_length:
+        if len(self.records) <= self.rollout_length:
             return self.records[-1]["Date"]
         
         return self.records[self.rollout_length]["Date"]

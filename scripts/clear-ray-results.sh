@@ -1,0 +1,1 @@
+rm -rf /mnt/c/Users/alexc/ray_results

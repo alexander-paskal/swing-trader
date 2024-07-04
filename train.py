@@ -47,7 +47,7 @@ parser.add_argument(
     "be achieved within --stop-timesteps AND --stop-iters.",
 )
 parser.add_argument(
-    "--stop-iters", type=int, default=50, help="Number of iterations to train."
+    "--stop-iters", type=int, default=5000, help="Number of iterations to train."
 )
 parser.add_argument(
     "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
@@ -113,7 +113,19 @@ stock_config = Config(
 
 
 if __name__ == "__main__":
-    args = parser.parse_args()
+    # args = parser.parse_args()
+
+    
+    class args:
+        local_mode = False
+        no_tune = False
+        stop_reward = 10
+        stop_timesteps = 100000
+        stop_iters = 5000
+        as_test = False
+        run = "PPO"
+        framework = "torch"
+        
     print(f"Running with following CLI options: {args}")
 
     ray.init(
@@ -139,7 +151,7 @@ if __name__ == "__main__":
         .framework(args.framework)
         .rollouts(num_rollout_workers=1)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "1")))
     )
 
     stop = {
