@@ -152,6 +152,7 @@ if __name__ == "__main__":
         .rollouts(num_rollout_workers=1)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "1")))
+        
     )
 
     stop = {
@@ -185,10 +186,16 @@ if __name__ == "__main__":
         tuner = tune.Tuner(
             args.run,
             param_space=config.to_dict(),
-            run_config=air.RunConfig(stop=stop),
+            # run_config=air.RunConfig(stop=stop),
+            run_config=air.RunConfig(
+                stop=stop,
+                checkpoint_config=air.CheckpointConfig(
+                    checkpoint_frequency=1,
+                )
+            ),
         )
         results = tuner.fit()
-
+        
         if args.as_test:
             print("Checking if learning goals were achieved")
             check_learning_achieved(results, args.stop_reward)

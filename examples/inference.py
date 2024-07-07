@@ -78,15 +78,15 @@ import gymnasium as gym
 import numpy as np
 import os
 
-from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.columns import Columns
+# from ray.rllib.core import DEFAULT_MODULE_ID
+# from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy, softmax
-from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
-)
+# from ray.rllib.utils.metrics import (
+#     ENV_RUNNER_RESULTS,
+#     EPISODE_RETURN_MEAN,
+# )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -132,7 +132,8 @@ if __name__ == "__main__":
     print("Training completed. Restoring new RLModule for action inference.")
     # Get the last checkpoint from the above training run.
     best_result = results.get_best_result(
-        metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}", mode="max"
+        # metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}", mode="max"
+        metrics=f"env_runner_results/episode_return_mean"
     )
     # Create new Algorithm and restore its state from the last checkpoint.
     rl_module = RLModule.from_checkpoint(

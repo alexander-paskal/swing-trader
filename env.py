@@ -238,14 +238,9 @@ class Env(gym.Env):
 
         self.dump("log.json")
         buy, sell = action
-    
-        if all([
-            self.ind >= len(self.records) - 1,
-            buy > 0.5 ,
-            not self.holding,
-            self.records[self.ind + 1]["Open"] > 0
-        ]):
-            
+
+        if self.ind < len(self.records) - 1 and buy > 0.5 and not self.holding and self.records[self.ind + 1]["Open"] > 0:
+            # print("Env Buy")
             self.holding = True
             self.buy_date = self.records[self.ind]["Date"]
             self.buy_price = self.records[self.ind+1]["Open"]
@@ -254,7 +249,7 @@ class Env(gym.Env):
         elif sell > 0.5 and \
                 self.holding and \
                 self.ticks_holding > self.min_hold:
-
+            # print("Env Sell")
             self.sell_date = self.records[self.ind+1]["Date"]
             self.sell_price = self.records[self.ind+1]["Open"]    
             multiplier = self.sell_price / self.buy_price

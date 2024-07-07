@@ -8,6 +8,9 @@ transactions: List[Transaction] = []
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd
+
+
+
 sns.set()
 
 import json
