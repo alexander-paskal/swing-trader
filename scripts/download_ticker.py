@@ -35,7 +35,10 @@ else:
     df = pd.read_csv(fpath)
     last_date = df["Date"].iloc[-1].split(" ")[0]
     history = ticker.history(interval=args.period, start=last_date)
+    history["Date"] = history.index
+    print(last_date)
     big_df = pd.concat([df, history])
+    # breakpoint()
     history = big_df.drop_duplicates().dropna()
     history.to_csv(fpath, index=False)
     

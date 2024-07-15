@@ -8,7 +8,7 @@ import time
 
 ics = ICs(
     name="AAPL",
-    date=datetime(2013, 1, 1)
+    date=datetime(2013, 7, 11)
 )
 
 config = Config(

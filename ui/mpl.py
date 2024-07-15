@@ -28,12 +28,15 @@ class MPLCore:
 
     def show(self):
         plt.cla()
-        start_ind = self.env.raw_index+self.env.ind-self.env.state_history_length
+        start_ind = max([self.env.raw_index+self.env.ind-self.env.state_history_length, 0])
         end_ind = self.env.raw_index+self.env.ind
+
 
         windowed_df = self.env.raw_df[start_ind: end_ind]
         
-        title = f"{self.env.ics['name']}\nYour Performance:{round(self.env.multiplier, 2)}"
+        if windowed_df.empty:
+            raise ValueError("Windowed DF empty!")
+        title = f"{self.env.ics['name']}\nYour Performance:{round(self.env.multiplier * self.env.hold_multiplier, 2)}"
         title += f"\nMarket Performance:{round(self.env.market_multiplier(), 2)}"
         
         sns.lineplot(data=windowed_df,x="Date",y='Open',color='firebrick', alpha=0.3)
@@ -46,9 +49,11 @@ class MPLCore:
         windowed_sells = self.sell_points[start_ind: end_ind]
 
         buy_df = windowed_df[windowed_buys]
-        sns.scatterplot(buy_df, x="Date", y="Open", color="teal")
+        if not buy_df.empty:
+            sns.scatterplot(buy_df, x="Date", y="Open", color="teal")
         sell_df = windowed_df[windowed_sells]
-        sns.scatterplot(sell_df, x="Date", y="Open", color="orange")
+        if not sell_df.empty:
+            sns.scatterplot(sell_df, x="Date", y="Open", color="orange")
         
 
         plt.draw()
@@ -72,8 +77,10 @@ class MPLCore:
             action['sell'] = True
             self.to_sell = False
         
-        self.env.step(Action.serialize(action))
+        results = self.env.step(Action.serialize(action))
+        self.env.print_summary()
         self.show()
+        return results
     
     def buy(self):
         """

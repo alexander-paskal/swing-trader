@@ -1,3 +1,22 @@
+### 7-14-24
+
+Got inference running with RLLib and populating the same UI plot taht I made. I'm on the cusp of getting the custom model to work - i was getting shockingly good results with the single layer MLP, but frankly i'm at the point where I don't trust it yet. I need to develop some methods of evaluation that give me more confidence in my model. I probably could stand to develop a few tests where I run it and check against hand calculated data
+
+I need to figure out some error with nans right now
+
+I think that some idea for modularizing might be:
+
+    Imports:
+        - I can register all my custom models as imports
+    
+    State Variations:
+        - I can set State, Action objects on my environment and encapsulate all the logic for building/validating/serializing, etc.
+        - I can have an underlying DataModel object that just controls the data access logic, as opposed to overloading it
+            - This same data model can be used for computing indicators, including:
+                - simple moving average
+                - MACD histogram
+
+
 ### 7-7-24
 
 Looked into inference with RLLib, looks annoyingly difficult to do. Need to consult the docs

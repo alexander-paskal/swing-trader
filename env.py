@@ -13,7 +13,7 @@ import random
 
 # SEED = 0
 SEED = None
-DATA_DIR = "data/nasdaq"
+DATA_DIR = "data/weekly"
 NAME_PATTERN = "{}-weekly.csv"
 DT_PATTERN = "%Y-%M-%d"
 
@@ -30,6 +30,7 @@ class Action(TypedDict):
         return Box(
             low=np.zeros(2),
             high=np.ones(2),
+            dtype=np.float32
         )
 
     def serialize(self) -> np.array:
@@ -52,6 +53,7 @@ class State(TypedDict):
         return Box(
             low=-np.inf*np.ones(l),
             high=np.inf*np.ones(l),
+            dtype=np.float32
         )
 
     @classmethod
@@ -104,13 +106,13 @@ class ICs(TypedDict):
         with open(os.path.join(DATA_DIR, name)) as f:
             lines = f.readlines()
 
-        if len(lines) < 50:
+        if len(lines) < 55:
             print(f"Skipping {name}")
             return cls.from_random()
 
         
         cols = lines[0].replace(" ","").split(",")
-        line_ind = random.randint(0, len(lines) - 1)
+        line_ind = random.randint(0, len(lines) - 50)  # only pick a line with 50 or more
         line = lines[line_ind].split(",")
 
         record = {k: v for k, v in zip(cols, line)}
@@ -183,6 +185,14 @@ class Env(gym.Env):
         """
         self.ics = ICs.from_random()
     
+    @property
+    def ticker(self):
+        return self.ics['name']
+    
+    @property
+    def start_date(self):
+        return self.ics['date']
+
     def _load_data(self) -> Tuple[List[Dict], pd.DataFrame]:
 
         name = self.ics["name"]
@@ -191,21 +201,32 @@ class Env(gym.Env):
         # load df by name
         fname = NAME_PATTERN.format(name)
         data: pd.DataFrame = pd.read_csv(os.path.join(DATA_DIR, fname))
-        
+        data = data[["Date", "Open", "High", "Low", "Close", "Volume"]]
+        data = data.dropna()
+
         # filter df by date
         date_data: pd.Series = data["Date"]
         date_df = date_data.str.split(" ", expand=True) # ???
-        data["Date"] = date_df[0]
-        data["Date"] = pd.to_datetime(data["Date"])
+        try:
+            data["Date"] = date_df[0]
+            data["Date"] = pd.to_datetime(data["Date"])
 
-        raw_data = data
+            raw_data = data
         
-        data = data[data["Date"] > date]
+            data = data[data["Date"] > date]
+        except KeyError:
+            
+            pass
+        
+        
         raw_index = data.index[0]
+
 
         records = data.to_dict("records")
         raw_records = raw_data.to_dict("records")
         return data, records, raw_data, raw_records, raw_index
+
+
 
     def _load_market(self) -> Tuple[List[Dict], pd.DataFrame]:
         name = self.ics["name"]
@@ -225,12 +246,74 @@ class Env(gym.Env):
         self.sell_date = None
         self.sell_price = None
         self.multiplier = 1
+        self.hold_multiplier = 1
         self.ticks_holding = 0
         self.history = []
 
         # return State.serialize(self.state()), {"env_state": "reset"}
         return self.state_arr(), {}
+    
+
+    @property
+    def out_of_data(self) -> bool:
+        if self.ind >= len(self.records) - 1:
+            return True
+        return False
+    
+
+    def print_summary(self):
+        print(f"""Env Summary
+            date: {self.cur_date}
+            holding: {self.holding}
+            multiplier: {self.multiplier}
+            hold_multiplier: {self.hold_multiplier}
+        """) 
+
+
+    @property
+    def cur_date(self) -> datetime.datetime:
+        return self.records[self.ind]["Date"]
+    
+    def _buy_step(self):
+        if self.holding:
+            print("Double Buy")
+            return
+        self.holding = True
+        self.buy_date = self.records[self.ind]["Date"]
+        self.buy_price = self.records[self.ind+1]["Open"]
         
+        
+    def _sell_step(self):
+        if not self.holding:
+            print("Double Sell")
+            return
+        self.sell_date = self.records[self.ind+1]["Date"]
+        self.sell_price = self.records[self.ind+1]["Open"]    
+        multiplier = self.sell_price / self.buy_price
+        self.multiplier *= multiplier
+        
+        self.history.append(Transaction({
+            "name": self.ics["name"],
+            "buy_date": self.buy_date,
+            "sell_date": self.sell_date,
+            "buy_price": self.buy_price,
+            "sell_price": self.sell_price,
+            "ticks_held": self.ticks_holding
+        }))
+        
+        # reset variables
+        self.holding = False
+        self.hold_multiplier = 1
+        self.buy_date = None
+        self.buy_price = None
+        self.sell_date = None
+        self.sell_price = None
+        self.ticks_holding = 0
+    
+    def _hold_step(self):
+        self.ticks_holding += 1
+        self.hold_multiplier = self.records[self.ind]["Close"]  / self.buy_price
+
     def step(
             self,
             action: float
@@ -239,41 +322,38 @@ class Env(gym.Env):
         self.dump("log.json")
         buy, sell = action
 
-        if self.ind < len(self.records) - 1 and buy > 0.5 and not self.holding and self.records[self.ind + 1]["Open"] > 0:
-            # print("Env Buy")
-            self.holding = True
-            self.buy_date = self.records[self.ind]["Date"]
-            self.buy_price = self.records[self.ind+1]["Open"]
-            
 
+        if self.out_of_data:
+            # ran out of data
+            terminated = True
+            truncated = True
+            reward = self.reward()
+            infos = {"history": self.history}
+            state_arr = self.state_arr()
+            return (
+                state_arr,
+                reward,
+                terminated,
+                truncated,
+                infos,
+            )
+
+        # buy
+        if self.ind < len(self.records) - 1 and buy > 0.5 and not self.holding and self.records[self.ind + 1]["Open"] > 0:
+            self._buy_step()
+
+            
+        # sell
         elif sell > 0.5 and \
                 self.holding and \
                 self.ticks_holding > self.min_hold:
             # print("Env Sell")
-            self.sell_date = self.records[self.ind+1]["Date"]
-            self.sell_price = self.records[self.ind+1]["Open"]    
-            multiplier = self.sell_price / self.buy_price
-            self.multiplier *= multiplier
+            self._sell_step()
             
-            self.history.append(Transaction({
-                "name": self.ics["name"],
-                "buy_date": self.buy_date,
-                "sell_date": self.sell_date,
-                "buy_price": self.buy_price,
-                "sell_price": self.sell_price,
-                "ticks_held": self.ticks_holding
-            }))
-            
-            # reset variables
-            self.holding = False
-            self.buy_date = None
-            self.buy_price = None
-            self.sell_date = None
-            self.sell_price = None
-            self.ticks_holding = 0
 
         elif self.holding:
-            self.ticks_holding += 1 
+            self._hold_step()
+
 
         # step the sim
         self.ind += 1
@@ -304,7 +384,7 @@ class Env(gym.Env):
             reward = self.reward()
 
         state_arr = self.state_arr()
-
+        # print("Size:", state_arr.size)
         return (
             state_arr,
             reward,
@@ -318,17 +398,18 @@ class Env(gym.Env):
         market_close = self.market_records[self.ind]["Close"]
         return market_close / market_open
 
-    def reward(self) -> float:
-        """
-        Our return - market return - 2 percent fees
-        """
+    def reward(self):
 
-        reward =  self.multiplier - self.market_multiplier() - 0.02
+        reward =  self.multiplier * self.hold_multiplier - self.market_multiplier() - 0.02
         if self.clip_reward:
             return min([reward, self.clip_reward])
     
     def state(self) -> State:
-        record = self.records[self.ind]
+        try:
+            record = self.records[self.ind]
+        except IndexError:
+            return State.null()
+        
         state: State = State({
             "high": record["High"],
             "low": record["Low"],
@@ -343,6 +424,7 @@ class Env(gym.Env):
     def state_arr(self) -> np.array:
         state_arr = State.serialize(self.state())
         if self.state_history_length > 0:
+            # print("if statement")
             state_history_arr = np.concatenate([
                 State.serialize(s) for s in self.state_history(self.state_history_length)
             ])
@@ -363,10 +445,7 @@ class Env(gym.Env):
         
         self.ind = og_ind
         return states
-    
-    def start_date(self) -> datetime.datetime:
-        return self.ics["date"]
-    
+
     def end_date(self) -> datetime.datetime:
         if len(self.records) <= self.rollout_length:
             return self.records[-1]["Date"]
@@ -392,3 +471,6 @@ class Env(gym.Env):
             "raw_index": self.raw_index
         }, f, sort_keys=True, indent=4, default=str)
         f.close()
+
+    
+

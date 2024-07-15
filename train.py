@@ -30,43 +30,42 @@ from ray.tune.registry import get_trainable_cls
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
-)
-parser.add_argument(
-    "--framework",
-    choices=["tf", "tf2", "torch"],
-    default="torch",
-    help="The DL framework specifier.",
-)
-parser.add_argument(
-    "--as-test",
-    action="store_true",
-    help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.",
-)
-parser.add_argument(
-    "--stop-iters", type=int, default=5000, help="Number of iterations to train."
-)
-parser.add_argument(
-    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
-)
-parser.add_argument(
-    "--stop-reward", type=float, default=0.1, help="Reward at which we stop training."
-)
-parser.add_argument(
-    "--no-tune",
-    action="store_true",
-    help="Run without Tune using a manual train loop instead. In this case,"
-    "use PPO without grid search and no TensorBoard.",
-)
-parser.add_argument(
-    "--local-mode",
-    action="store_true",
-    help="Init Ray in local mode for easier debugging.",
-)
-
+# parser = argparse.ArgumentParser()
+# parser.add_argument(
+#     "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+# )
+# parser.add_argument(
+#     "--framework",
+#     choices=["tf", "tf2", "torch"],
+#     default="torch",
+#     help="The DL framework specifier.",
+# )
+# parser.add_argument(
+#     "--as-test",
+#     action="store_true",
+#     help="Whether this script should be run as a test: --stop-reward must "
+#     "be achieved within --stop-timesteps AND --stop-iters.",
+# )
+# parser.add_argument(
+#     "--stop-iters", type=int, default=5000, help="Number of iterations to train."
+# )
+# parser.add_argument(
+#     "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
+# )
+# parser.add_argument(
+#     "--stop-reward", type=float, default=0.1, help="Reward at which we stop training."
+# )
+# parser.add_argument(
+#     "--no-tune",
+#     action="store_true",
+#     help="Run without Tune using a manual train loop instead. In this case,"
+#     "use PPO without grid search and no TensorBoard.",
+# )
+# parser.add_argument(
+#     "--local-mode",
+#     action="store_true",
+#     help="Init Ray in local mode for easier debugging.",
+# )
 
 from env import Env as StockEnv, Config
 
@@ -77,39 +76,40 @@ stock_config = Config(
     state_history_length=49
 )
 
-# class SimpleCorridor(gym.Env):
-#     """Example of a custom env in which you have to walk down a corridor.
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.models.torch.misc import SlimFC
+from ray.rllib.utils.annotations import override
+import torch
+import torch.nn as nn
+from ray.rllib.models import ModelCatalog
+class CustomTorchModel(TorchModelV2, nn.Module):
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
+        nn.Module.__init__(self)
 
-#     You can configure the length of the corridor via the env config."""
+        self.torch_sub_model = nn.Sequential(
+            SlimFC(int(np.product(obs_space.shape)), 256, activation_fn=nn.ReLU),
+            SlimFC(256, 256, activation_fn=nn.ReLU),
+            SlimFC(256, num_outputs, activation_fn=None)
+        )
 
-#     def __init__(self, config: EnvContext):
-#         self.end_pos = config["corridor_length"]
-#         self.cur_pos = 0
-#         self.action_space = Discrete(2)
-#         self.observation_space = Box(0.0, self.end_pos, shape=(1,), dtype=np.float32)
-#         # Set the seed. This is only used for the final (reach goal) reward.
-#         self.reset(seed=config.worker_index * config.num_workers)
+        self.value_branch = nn.Sequential(
+            SlimFC(int(np.product(obs_space.shape)), 256, activation_fn=nn.ReLU),
+            SlimFC(256, 1, activation_fn=None)
+        )
 
-#     def reset(self, *, seed=None, options=None):
-#         random.seed(seed)
-#         self.cur_pos = 0
-#         return [self.cur_pos], {}
+    @override(TorchModelV2)
+    def forward(self, input_dict, state, seq_lens):
+        obs = input_dict["obs_flat"].float()
+        self._last_flat_in = obs.reshape(obs.shape[0], -1)
+        self._last_out = self.torch_sub_model(self._last_flat_in)
+        return self._last_out, state
 
-#     def step(self, action):
-#         assert action in [0, 1], action
-#         if action == 0 and self.cur_pos > 0:
-#             self.cur_pos -= 1
-#         elif action == 1:
-#             self.cur_pos += 1
-#         done = truncated = self.cur_pos >= self.end_pos
-#         # Produce a random reward when we reach the goal.
-#         return (
-#             [self.cur_pos],
-#             random.random() * 2 if done else -0.1,
-#             done,
-#             truncated,
-#             {},
-#         )
+    @override(TorchModelV2)
+    def value_function(self):
+        assert self._last_flat_in is not None, "must call forward() first"
+        return self.value_branch(self._last_flat_in).squeeze(1)
+ModelCatalog.register_custom_model("custom_torch_model", CustomTorchModel)
 
 
 if __name__ == "__main__":
@@ -143,17 +143,26 @@ if __name__ == "__main__":
     # import sys
     # sys.exit()
 
+    
+    
+    
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
         # or "corridor" if registered above
-        .environment(StockEnv, env_config={"corridor_length": 5})
+        .environment(StockEnv, env_config=stock_config)
+        .training(model={
+            "custom_model": "custom_torch_model",
+            "custom_model_config": {},
+        })
         .framework(args.framework)
         .rollouts(num_rollout_workers=1)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "1")))
         
     )
+
+    
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -175,8 +184,7 @@ if __name__ == "__main__":
             print(pretty_print(result))
             # stop training of the target train steps or reward are reached
             if (
-                result["timesteps_total"] >= args.stop_timesteps
-                or result["episode_reward_mean"] >= args.stop_reward
+                result["episode_reward_mean"] >= args.stop_reward
             ):
                 break
         algo.stop()
