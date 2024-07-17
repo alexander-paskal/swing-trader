@@ -6,11 +6,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument("ticker", help="ticker to download")
 parser.add_argument("period", help="period of interest i.e. 1d, 5d")
 parser.add_argument("-o","--output", help="directory to save to", default="/mnt/c/Users/alexc/Projects/swing-trader/data")
-parser.add_argument("-t","--timeframe", help="timeframe to get i.e. 1y", default="1y")
+parser.add_argument("-t","--timeframe", help="timeframe to get i.e. 1y", default="max")
 
 DATA_MAP = {
     "1d": "daily",
-    "5d": "weekly"
+    "5d": "weekly",
+    "1mo": "monthly",
+    "1m": "minute"
 }
 
 

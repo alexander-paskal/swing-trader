@@ -9,9 +9,17 @@ import numpy as np
 import random
 
 
+__all__ = [
+    'Env',
+    'Action',
+    'State',
+    'ICs',
+    'Config',
+    'Transaction',
+]
 
 
-# SEED = 0
+# SEED =
 SEED = None
 DATA_DIR = "data/weekly"
 NAME_PATTERN = "{}-weekly.csv"
@@ -150,7 +158,26 @@ class Config(TypedDict):
     clip_reward: float
 
 class Env(gym.Env):
+    """
+    Env requires:
+        a Data Model
+        a State class
+        a Action class
+        a Reward class
+        an InitalConditions class
+        
+    The State interacts with the data model and the stateful information stored in the Env to produce a current state
+        + lists what time components it requires
 
+    The Action is pretty straightforward and just computes an action
+    The Reward processes the history and computes the reward
+    The DataModel contains all the actual data, methods for accessing the data
+    
+        + getters for data at a certain date (indicator=price, date=latest)
+        + access to data dataframes
+        + 
+        
+    """
     def __init__(self, config: Optional[dict] = None, ics: Optional[ICs] = None):
 
         # set initial conditions
@@ -226,8 +253,6 @@ class Env(gym.Env):
         raw_records = raw_data.to_dict("records")
         return data, records, raw_data, raw_records, raw_index
 
-
-
     def _load_market(self) -> Tuple[List[Dict], pd.DataFrame]:
         name = self.ics["name"]
         self.ics["name"] = self.market
@@ -253,14 +278,12 @@ class Env(gym.Env):
         # return State.serialize(self.state()), {"env_state": "reset"}
         return self.state_arr(), {}
     
-
     @property
     def out_of_data(self) -> bool:
         if self.ind >= len(self.records) - 1:
             return True
         return False
     
-
     def print_summary(self):
         print(f"""Env Summary
             date: {self.cur_date}
@@ -268,7 +291,6 @@ class Env(gym.Env):
             multiplier: {self.multiplier}
             hold_multiplier: {self.hold_multiplier}
         """) 
-
 
     @property
     def cur_date(self) -> datetime.datetime:
@@ -281,7 +303,6 @@ class Env(gym.Env):
         self.holding = True
         self.buy_date = self.records[self.ind]["Date"]
         self.buy_price = self.records[self.ind+1]["Open"]
-        
         
     def _sell_step(self):
         if not self.holding:

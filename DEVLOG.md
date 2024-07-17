@@ -16,6 +16,8 @@ I think that some idea for modularizing might be:
                 - simple moving average
                 - MACD histogram
 
+I also need to start thinking about what an MVP for a website might look like
+
 
 ### 7-7-24
 

@@ -28,3 +28,8 @@ for word in "${sorted_words[@]}"; do
     
     ((current_jobs++))
 done
+
+python3 scripts/download_ticker.py QQQ $1 &
+
+wait
+echo "Done!"
