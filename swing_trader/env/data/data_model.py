@@ -5,13 +5,13 @@ import pandas as pd
 import os
 from typing import *
 from datetime import datetime
-from swing_trader.env.utils import Date
+from swing_trader.env.utils import Date, weekdays_after
 
 
 __all__ = ['DataModel']
 
 class DataModel:
-    
+    ticker: str
     daily: pd.DataFrame
     weekly: pd.DataFrame
     monthly: pd.DataFrame
@@ -28,6 +28,8 @@ class DataModel:
             df = pd.read_csv(self._csv_path(ticker, f))
             df = self._clean(df)
             setattr(self, f, df)
+        
+        self.ticker = ticker
     
     def _csv_path(self, ticker: str, freq: str) -> os.PathLike:
         return os.path.join(self.data_path, freq, f"{ticker}-{freq}.csv")
@@ -52,7 +54,7 @@ class DataModel:
         date = Date(date)
         df = getattr(self, freq)
 
-        df = df[df.index < date.as_timestamp]
+        df = df[df.index <= date.as_timestamp]
 
         if attrs is None:
             attrs = df.columns
@@ -65,3 +67,30 @@ class DataModel:
         df = df.iloc[-length:, :]
 
         return df
+
+    def get_price_on_open(self, date: Date) -> float:
+        """
+        Get the open price on the next tick following a given tick
+        """
+        next_tick = weekdays_after(date, 1)
+        df = self.access(
+            freq="daily",
+            attrs=["Open"],
+            date=next_tick,
+            length=1
+        )
+        return df.iloc[0, 0]
+    
+    def get_next_tick(self, freq: str, date: Date) -> Date:
+        """Get the next date at a given frequency"""
+        return self.get_n_ticks_after(freq, date, 1)
+    
+    def get_n_ticks_after(self, freq: str, date: Date, n: int) -> Date:
+        """Get the date N ticks later"""
+        df = getattr(self, freq)
+        i1 = list(df.index).index(Date(date).as_timestamp)
+        i2 = i1 + n
+        ts2 = df.index[i2]
+        return Date(ts2)
+    
+    

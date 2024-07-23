@@ -2,10 +2,13 @@ import datetime
 from typing import Any
 import pandas as pd
 from typing import *
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing_extensions import Self
+from pandas.tseries.holiday import USFederalHolidayCalendar
 
-__all__ = ["Date"]
+HOLIDAYS = USFederalHolidayCalendar().holidays(start=datetime(1970,1,1), end=datetime.today())
+
+__all__ = ["Date", "weekdays_after"]
 
 class Date:
     """
@@ -55,7 +58,7 @@ class Date:
         if not isinstance(other, self.__class__):
             other = self.__class__(other)
         
-        return self.as_datetime == other.as_datetime
+        return self.as_datetime == self.__class__(other).as_datetime
     
     def __req__(self, other: Union[Self, datetime, pd.Timestamp, str]) -> bool:
         return self.__eq__(other)
@@ -122,4 +125,21 @@ class Date:
         dt = datetime.strptime(arg, format_string)
         self._parse_datetime(dt)
     
+    def tomorrow(self) -> Self:
+        """Computes tomorrows day"""
+        return self.__class__(self.as_datetime + timedelta(days=1))
+
+    def is_weekday(self) -> bool:
+        return self.as_datetime.weekday() < 5 and self.as_datetime not in HOLIDAYS
+    
+def weekdays_after(start_date: Date, num_days: int):
+
+    count = 0
+    day = Date(start_date)
+    while count < num_days:
+        day = day.tomorrow()
+        if day.is_weekday() and not day.as_datetime in HOLIDAYS:
+            count += 1
+    
+    return day
 

@@ -1,3 +1,24 @@
+### 7-22
+
+Finished an initial thing for the State, just need to check to make sure that the env is working. I need to rework:
+
+    Initial Conditions
+    LoadData
+    randomize
+    Action
+    Reward
+
+The last two should be pretty quick. As for randomizing initial conditions, i could probably add something to specify start and end date. Can just load the data model again to simplify things
+
+
+
+### 7-17
+
+Last two sessions have been spent refactoring. I think it was time well spent, but i'm starting to dilly dally. I have one more to get my env working and tested, and to get a training run going. Next couple sessions are gonna be about testing different models. Here's what I want to be able to run:
+
+    State: N Daily, N Weekly and N Monthly open ticks, along with their associated volumes, for a 6N + 1 input vector. Same normalizations as before
+    Reward: A comparison with the buy & hold performance of the 
+
 ### 7-14-24
 
 Got inference running with RLLib and populating the same UI plot taht I made. I'm on the cusp of getting the custom model to work - i was getting shockingly good results with the single layer MLP, but frankly i'm at the point where I don't trust it yet. I need to develop some methods of evaluation that give me more confidence in my model. I probably could stand to develop a few tests where I run it and check against hand calculated data

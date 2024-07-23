@@ -102,7 +102,7 @@ class State(TypedDict):
             "volume": -1
         })
 
-class ICs(TypedDict):
+class InitialConditions(TypedDict):
     name: str
     date: datetime.datetime
 
@@ -343,7 +343,11 @@ class Env(gym.Env):
         self.dump("log.json")
         buy, sell = action
 
-
+        # handle action
+        # step state
+        # terminate
+        # compute reward
+        # return observation
         if self.out_of_data:
             # ran out of data
             terminated = True
@@ -383,6 +387,8 @@ class Env(gym.Env):
         truncated = False
         reward = 0
         infos = {"history": self.history}
+
+        # check if terminated
         if any([
             self.ind >= len(self.records) - 1,
             self.ind >= self.rollout_length - 1
@@ -402,7 +408,7 @@ class Env(gym.Env):
                     "ticks_held": self.ticks_holding,
                 }))
 
-            reward = self.reward()
+            reward = self.get_reward()
 
         state_arr = self.state_arr()
         # print("Size:", state_arr.size)

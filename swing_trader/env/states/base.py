@@ -10,25 +10,21 @@ from swing_trader.env.utils import Date
 
 class State:
     
-
+    timeframe: str
+    data: DataModel
+    date: Date
+    
     @classmethod
     def from_data(cls, date: Date, data: DataModel):
         raise NotImplementedError
     
-    def serialize(self) -> np.array:
+    def null(self) -> np.array:
         raise NotImplementedError
     
-    @classmethod
-    def from_serialized(cls, arr: np.array) -> Self:
+    def space(self) -> gym.Space:
         raise NotImplementedError
     
-    @classmethod
-    def null(cls) -> Self:
+    @property
+    def array(self) -> np.array:
         raise NotImplementedError
-    
-    @classmethod
-    def space(cls, history=0) -> gym.Box:
-        raise NotImplementedError
-    
-
 
