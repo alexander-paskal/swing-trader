@@ -5,18 +5,18 @@ import gym
 import numpy as np
 
 
-from env import Env, Config, ICs
+from swing_trader.env.env import StockEnv, Config, InitialConditions
 from train import CustomTorchModel
 import datetime
 
 # Register the custom environment
-register_env("CustomEnv-v0", lambda config: Env(config))
+register_env("CustomEnv-v0", lambda config: StockEnv(config))
 
 # Initialize Ray with minimal resources
 ray.init(num_cpus=1, num_gpus=0)
 
 # Load the trained model
-checkpoint_path = "C:/Users/alexc/ray_results/PPO_2024-07-14_22-43-34/PPO_Env_07f73_00000_0_2024-07-14_22-43-35/checkpoint_000002"
+checkpoint_path = "C:/Users/alexc/ray_results/PPO_2024-07-26_07-44-44/PPO_StockEnv_739ae_00000_0_2024-07-26_07-44-44/checkpoint_000007"
 loaded_algo = Algorithm.from_checkpoint(checkpoint_path)
 
 # get model
@@ -26,27 +26,36 @@ model = policy.model
 # Set up the environment for inference
 
 # from env import Config
+from swing_trader.env.env import CloseVolumeState
+
+StockEnv.set_state(CloseVolumeState)
+
+HISTORY = 40
+OBS_SPACE = HISTORY * 6 + 1
 stock_config = Config(
-    rollout_length=64,
+    rollout_length=200,
     market="QQQ",
     min_hold=2,
-    state_history_length=49
+    state_history_length=HISTORY,
+    action_space = 2,
+    observation_space = OBS_SPACE
 )
-ics = ICs(
+ics = InitialConditions(
     name="MSFT",
     date=datetime.datetime(2013,1,1)
 )
-env = Env(stock_config)
+env = StockEnv(stock_config)
 
 from ui.mpl import MPLCore
 
-ui = MPLCore(env)
+from swing_trader.env.utils import log_env
 import time
 
 
+summaries = []
 
-for episode in range(1):
-    obs, *_ = env.reset(randomize=False)
+for episode in range(10):
+    obs, *_ = env.reset(randomize=True)
     done = False
     episode_reward = 0
     steps = 0
@@ -57,33 +66,47 @@ for episode in range(1):
         time.sleep(0.1)
         steps += 1
     
-
+    # log_env(env)
         # episode_reward += reward
     # print(f"Episode {episode + 1} reward: {episode_reward}")
+    summaries.append({
+        "start_date": env.start_date,
+        "ticker": env.data.ticker,
+        "buy_and_hold": env.data.buy_and_hold(env.start_date, env.cur_date),
+        "performance": env.reward,
+        "history": env.history
+    })
+    print(summaries[-1])
+
+# for summary in summaries:
+#     print(summary)
 
 # Shut down Ray
 ray.shutdown()
 
-history = env.history
-buy_dates = {t["buy_date"] for t in env.history}
-sell_dates = {t["sell_date"] for t in env.history}
+# history = env.history
+# buy_dates = {t["buy_date"] for t in env.history}
+# sell_dates = {t["sell_date"] for t in env.history}
+
+# print(history)
+
+#### uncomment when ui is working
+# env.reset(randomize=False)
 
 
-env.reset(randomize=False)
 
-
-ui = MPLCore(env)
-import matplotlib.pyplot as plt
-i = 0
-while i < steps:
-    if env.cur_date in buy_dates:
-        ui.buy()
-    if env.cur_date in sell_dates:
-        ui.sell()
+# ui = MPLCore(env)
+# import matplotlib.pyplot as plt
+# i = 0
+# while i < steps:
+#     if env.cur_date in buy_dates:
+#         ui.buy()
+#     if env.cur_date in sell_dates:
+#         ui.sell()
     
-    ui.step()
-    i += 1
-    plt.pause(1)
+#     ui.step()
+#     i += 1
+#     plt.pause(1)
 
-plt.show()
-print()
+# plt.show()
+# print()

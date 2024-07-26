@@ -1,7 +1,7 @@
 """
 Implements a core UI based on matplotlib and seaborn
 """
-from env import Env, Action
+from swing_trader.env.env import StockEnv as Env, Action
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd

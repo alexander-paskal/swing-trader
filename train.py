@@ -67,13 +67,20 @@ torch, nn = try_import_torch()
 #     help="Init Ray in local mode for easier debugging.",
 # )
 
-from env import Env as StockEnv, Config
+from swing_trader.env.env import StockEnv, Config, InitialConditions
+from swing_trader.env.env import CloseVolumeState
 
+StockEnv.set_state(CloseVolumeState)
+
+HISTORY = 40
+OBS_SPACE = HISTORY * 6 + 1
 stock_config = Config(
-    rollout_length=64,
+    rollout_length=200,
     market="QQQ",
     min_hold=2,
-    state_history_length=49
+    state_history_length=HISTORY,
+    action_space = 2,
+    observation_space = OBS_SPACE
 )
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -82,6 +89,8 @@ from ray.rllib.utils.annotations import override
 import torch
 import torch.nn as nn
 from ray.rllib.models import ModelCatalog
+
+
 class CustomTorchModel(TorchModelV2, nn.Module):
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
@@ -130,20 +139,9 @@ if __name__ == "__main__":
 
     ray.init(
         local_mode=args.local_mode,
-        # num_cpus=0,
+        num_cpus=8,
     )
 
-    # Can also register the env creator function explicitly with:
-    # register_env("corridor", lambda config: SimpleCorridor(config))
-
-    # from ray.rllib.utils import check_env
-    # env = StockEnv(stock_config)
-    # result = check_env(env)
-    # print(result)
-    # import sys
-    # sys.exit()
-
-    
     
     
     config = (

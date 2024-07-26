@@ -143,3 +143,15 @@ def weekdays_after(start_date: Date, num_days: int):
     
     return day
 
+
+def log_env(env):
+    print(f"""
+    cur_date:  {env.cur_date}
+    end_date:  {env.end_date}
+    n_steps:   {env.n_steps}
+    history:   {env.history}
+    reward:    {env.reward}
+    next_open: {env.data.get_price_on_close(env.cur_date)}
+    is_holding:{env.is_holding}
+    state:     {env.state}
+    """)

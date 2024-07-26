@@ -21,5 +21,7 @@ for _ in range(100):
     d = random.randint(1, 28)
     date = Date(datetime(y, m, d))
 
-    s = DWMState(date, data)
+    s = DWMState(date, data, cfg={
+        "column": "Volume", "log": True, "normalize": 1, "zero_center": True
+    })
     print()

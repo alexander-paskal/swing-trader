@@ -1,154 +1,95 @@
-import pandas as pd
-import os
-import datetime
+from swing_trader.env.states import DWMState, CompositeState, State
+from swing_trader.env.utils import Date, weekdays_after
+from swing_trader.env.data.data_model import DataModel
+import numpy as np
 from typing import *
 from typing_extensions import TypedDict, Self
 import gymnasium as gym
-from gymnasium.spaces import Discrete, Box
-import numpy as np
-import random
 
+import random
+from dataclasses import dataclass
+import os
 
 __all__ = [
-    'Env',
+    'BuyEvent',
+    'SellEvent',
+    'Reward',
     'Action',
-    'State',
-    'ICs',
     'Config',
-    'Transaction',
+    'StockEnv',
+    'InitialConditions',
+    'CloseVolumeState',
+    'ConfigError'
 ]
 
 
-# SEED =
-SEED = None
-DATA_DIR = "data/weekly"
-NAME_PATTERN = "{}-weekly.csv"
-DT_PATTERN = "%Y-%M-%d"
+@dataclass
+class BuyEvent:
+    date: Date
+    price: float
 
-if SEED is not None:
-    random.seed(SEED)
-    np.random.seed(SEED)
+@dataclass
+class SellEvent:
+    date: Date
+    price: float
+    days_held: int = 0
 
-class Action(TypedDict):
-    buy: bool
-    sell: bool
+class Reward:
+    def __init__(self, **kwargs):
+        # "cur_date": self.cur_date,
+        # "start_date": self.start_date,
+        # "end_date": self.end_date,
+        # "history": self.history,
+        # "is_holding": self.is_holding,
+        # "ics": self.ics,
+        # "data": self.data
 
-    @classmethod
-    def space(cls) -> Box:
-        return Box(
-            low=np.zeros(2),
-            high=np.ones(2),
-            dtype=np.float32
-        )
 
-    def serialize(self) -> np.array:
-        return np.array([
-            float(self["buy"]),
-            float(self["sell"])
-        ])
-
-class State(TypedDict):
-    bought: bool
-    high: float
-    low: float
-    open: float
-    close: float
-    volume: float
-    
-    @classmethod
-    def space(cls, history=0) -> Box:
-        l = (history + 1) * 6
-        return Box(
-            low=-np.inf*np.ones(l),
-            high=np.inf*np.ones(l),
-            dtype=np.float32
-        )
-
-    @classmethod
-    def serialize(cls, self) -> np.array:
-
+        if "data" not in kwargs:
+            raise ValueError("Reward needs data")
         
-        return np.array([
-            float(self["bought"]),
-            self["high"] / 1000,
-            self["low"] / 1000,
-            self["open"] / 1000,
-            self["close"] / 1000,
-            np.log10(self["volume"] + 1.01),
-        ])
-    
-    @classmethod
-    def from_serialized(cls, arr: np.array) -> Self:
-
-        (bought, high, low, open, close, vol) = arr
-
-        return cls({
-            "bought": bool(bought),
-            "high": high * 1000,
-            "low": low * 1000,
-            "open": open * 1000,
-            "close": close * 1000,
-            "volume": 10**vol
-        }) 
-    
-    @classmethod
-    def null(cls) -> Self:
-        return cls({
-            "bought": 0,
-            "high": 0,
-            "low": 0,
-            "open": 0,
-            "close": 0,
-            "volume": -1
-        })
-
-class InitialConditions(TypedDict):
-    name: str
-    date: datetime.datetime
-
-    @classmethod
-    def from_random(cls) -> Self:
-        names = list(os.listdir(DATA_DIR))
-        name = random.choice(names)
+        if "cur_date" not in kwargs:
+            raise ValueError("Reward needs cur_date")
         
-        with open(os.path.join(DATA_DIR, name)) as f:
-            lines = f.readlines()
-
-        if len(lines) < 55:
-            print(f"Skipping {name}")
-            return cls.from_random()
-
+        if "history" not in kwargs:
+            raise ValueError("Reward needs history")
         
-        cols = lines[0].replace(" ","").split(",")
-        line_ind = random.randint(0, len(lines) - 50)  # only pick a line with 50 or more
-        line = lines[line_ind].split(",")
-
-        record = {k: v for k, v in zip(cols, line)}
+        if "is_finished" not in kwargs:
+            raise ValueError("Reward needs is_finished")
         
-        if record["Open"] == 0 or record["Volume"] == 0:
-           line = lines[line_ind + 1].split(",")
-           record = {k: v for k, v in zip(cols, line)}
+        if "is_holding" not in kwargs:
+            raise ValueError("Reward needs is_holding")
 
+        self.data: DataModel = kwargs["data"]
+        self.cur_date: Date = kwargs["cur_date"]
+        self.is_finished: Date = kwargs["is_finished"]
+        self.history: List[Union[BuyEvent, SellEvent]] = kwargs["history"]
+        self.is_holding: bool = kwargs["is_holding"]
 
-        date = record["Date"].split(" ")[0]
-        try:
-            date = datetime.datetime.strptime(date, DT_PATTERN)
-        except ValueError:
-            print(f"Skipping {name}")
-            return cls.from_random()
+    def value(self):
+        if not self.is_finished:
+            return 0
         
-        return cls({
-            "name": name.replace("-weekly.csv",""),
-            "date": date
-        })
+        history = self.history.copy()
+        if len(self.history) % 2 == 1:
+            current_price = self.data.access("daily", self.cur_date, length=1).loc[self.cur_date.as_timestamp, "Close"]
+            history.append(SellEvent(
+                date=self.cur_date,
+                price=current_price
+            ))
+        
+        multiplier = 1
+        for i in range(0, len(history), 2):
+            buy = history[i]
+            sell = history[i+1]
+            assert isinstance(buy, BuyEvent), "unordered buy"
+            assert isinstance(sell, SellEvent), "unordered sell"
+            multiplier *= sell.price / buy.price
+        
+        if multiplier > 3:
+            return 3
+        return multiplier
 
-class Transaction(TypedDict):
-    name: str
-    buy_date: datetime.datetime
-    sell_date: datetime.datetime
-    buy_price: float
-    sell_price: float
-    ticks_held: int
 
 class Config(TypedDict):
     rollout_length: int
@@ -157,347 +98,262 @@ class Config(TypedDict):
     state_history_length: int
     clip_reward: float
 
-class Env(gym.Env):
-    """
-    Env requires:
-        a Data Model
-        a State class
-        a Action class
-        a Reward class
-        an InitalConditions class
-        
-    The State interacts with the data model and the stateful information stored in the Env to produce a current state
-        + lists what time components it requires
 
-    The Action is pretty straightforward and just computes an action
-    The Reward processes the history and computes the reward
-    The DataModel contains all the actual data, methods for accessing the data
+class Action:
+    buy: bool
+    sell: bool
+    def __init__(self, buy: bool = False, sell: bool = False):
+        self.buy = buy
+        self.sell = sell
     
-        + getters for data at a certain date (indicator=price, date=latest)
-        + access to data dataframes
-        + 
+    def serialize(self) -> np.array:
+        return np.array([
+            float(self.buy),
+            float(self.sell)
+        ])
+
+    @classmethod
+    def from_array(cls, arr: np.array) -> Self:
+        d = {"buy": False, "sell": False}
+
+        if arr[0] > 0.5:
+            d["buy"] = True
+            return cls(**d)
         
-    """
-    def __init__(self, config: Optional[dict] = None, ics: Optional[ICs] = None):
+        if arr[1] > 0.5:
+            d["sell"] = True
+            return cls(**d)
 
-        # set initial conditions
-        self.ics: ICs = dict()
-        if ics is None:
-            self._randomize_ics()
-        else:
-            self.ics = ics
+        return cls(**d)
 
+DATA_DIR = "data/daily"
+
+class InitialConditions(TypedDict):
+    name: str
+    date: Date
+
+    @classmethod
+    def from_random(cls, n: int = 50, raise_: bool = True) -> Self:
+        names = list(os.listdir(DATA_DIR))
+        name = random.choice(names)
         
-        # set config values
-        config = {} if config is None else config
-        self.config = config
-        self.rollout_length = config.get("rollout_length") if "rollout_length" in config else 50
-        self.market = config.get("market") if "market" in config else "QQQ"
-        self.min_hold = config.get("min_hold") if "min_hold" in config else 1
-        self.state_history_length = config.get("state_history_length") if "state_history_length" in config else 0
-        self.clip_reward = config.get("clip_reward") if "clip_reward" in config else 1
+        # pick a random ticker
+        ticker = name.split("-")[0]
 
-        # Gym components
-        self.action_space = Action.space()
-        self.observation_space = State.space(self.state_history_length)
-
-
-        # set internals
-        self.reset(randomize = False)
-        self.market_df, self.market_records, self.market_raw_data, self.market_raw_records, self.market_raw_index = self._load_market()
-
-    def _randomize_ics(self):
-        """
-        Randomizes initial conditions
-        """
-        self.ics = ICs.from_random()
-    
-    @property
-    def ticker(self):
-        return self.ics['name']
-    
-    @property
-    def start_date(self):
-        return self.ics['date']
-
-    def _load_data(self) -> Tuple[List[Dict], pd.DataFrame]:
-
-        name = self.ics["name"]
-        date = self.ics["date"]
-
-        # load df by name
-        fname = NAME_PATTERN.format(name)
-        data: pd.DataFrame = pd.read_csv(os.path.join(DATA_DIR, fname))
-        data = data[["Date", "Open", "High", "Low", "Close", "Volume"]]
-        data = data.dropna()
-
-        # filter df by date
-        date_data: pd.Series = data["Date"]
-        date_df = date_data.str.split(" ", expand=True) # ???
+        # load the data for that ticker
         try:
-            data["Date"] = date_df[0]
-            data["Date"] = pd.to_datetime(data["Date"])
+            data = DataModel(ticker, freqs=['daily', 'weekly', 'monthly'])
+        except Exception as e:
+            if raise_:
+                raise e
+            else:
+                print(f"Skipping {name}")
+                return cls.from_random(n, raise_=raise_)
 
-            raw_data = data
+        min_date, max_date = data.get_date_bounds()
+
+        daily = data.daily[data.daily.index > min_date.as_timestamp]
+        daily = daily[daily.index < max_date.as_timestamp].iloc[:-n, :]
+
+        if daily.empty:
+            print(f"Skipping {name}")
+            return cls.from_random(n, raise_=raise_)
         
-            data = data[data["Date"] > date]
-        except KeyError:
+        return {
+            "name": ticker,
+            "date": Date(random.choice(daily.index))
+        }
+
+
+
+class CloseVolumeState(CompositeState):
+
+    timeframe = "daily"
+
+    def __init__(self, date: Date, data: DataModel, ticks: int):
+
+        s1 = DWMState(date, data, {"column": "Close", "normalize": True, "ticks": ticks})
+        s2 = DWMState(date, data, {"column": "Volume", "log": True, "divide": 10, "ticks": ticks})
+        
+        super().__init__(s1, s2)
+
+class ConfigError(Exception):
+    pass
+
+class StockEnv(gym.Env):
+
+    state_cls: Type[State] = CloseVolumeState
+    action_cls: Type[Action] = Action
+    reward_cls: Type[Reward] = Reward
+
+    def __init__(
+            self,
+            config: Config, 
+            *,
+            ics: Optional[InitialConditions] = None, 
+            state_cls: Type[State] = State,
+            action_cls: Type[Action] = Action, 
+            reward_cls: Type[Reward] = Reward,
             
-            pass
+        ):
+        self.config: Config = config
+        if ics is None:
+            ics = InitialConditions.from_random(n=config["rollout_length"], raise_ = False)
+        self.ics: InitialConditions = ics
         
+        self.data: DataModel = None
+        self.cur_date: Date = None
+        self.start_date: Date = None
+        self.end_date: Date = None
+        self.n_steps: int = 0
+        self.history: List[Union[BuyEvent, SellEvent]] = []
+        self.is_holding: bool = False
+
+        # self.set_state(state_cls)
+        # self.set_action(action_cls)
+        # self.set_reward(reward_cls)
+
+        if "action_space" not in config or "observation_space" not in config:
+            raise ConfigError("config needs action or observation space")
         
-        raw_index = data.index[0]
+        self.action_space = gym.spaces.Box(low=0., high=1., shape=(config.get("action_space"),), dtype=float)
+        self.observation_space = gym.spaces.Box(low=-np.inf, high=-np.inf, shape=(config.get("observation_space"), ), dtype=float)
 
+    @classmethod
+    def set_state(cls, state_cls: TypeVar):
+        assert hasattr(state_cls, "timeframe"), "States must denote a timeframe for updates"
+        cls.state_cls = state_cls
 
-        records = data.to_dict("records")
-        raw_records = raw_data.to_dict("records")
-        return data, records, raw_data, raw_records, raw_index
-
-    def _load_market(self) -> Tuple[List[Dict], pd.DataFrame]:
-        name = self.ics["name"]
-        self.ics["name"] = self.market
-        data, records, raw_data, raw_records, raw_index = self._load_data()
-        self.ics["name"] = name
-        return data, records, raw_data, raw_records, raw_index
-
+    @classmethod
+    def set_action(cls, action_cls: TypeVar):
+        cls.action_cls = action_cls
+    
+    @classmethod
+    def set_reward(cls, reward_cls: TypeVar):
+        cls.reward_cls = reward_cls
+    
+    
     def reset(self, *, seed=None, options=None, randomize: bool = True):
         if randomize:
             self._randomize_ics()
-        self.df, self.records, self.raw_df, self.raw_records, self.raw_index = self._load_data()
-        self.ind = 0
-        self.holding = False
-        self.buy_date = None
-        self.buy_price = None
-        self.sell_date = None
-        self.sell_price = None
-        self.multiplier = 1
-        self.hold_multiplier = 1
-        self.ticks_holding = 0
+        
+        self.data: DataModel = self._load_data()  # TODO
+
+        self.cur_date = Date(self.ics["date"])
+        self.start_date = Date(self.ics["date"])
+        self.end_date = self.data.get_n_ticks_after(self.state_cls.timeframe, self.start_date, self.config["rollout_length"])
+        self.is_holding = False
         self.history = []
+        self.n_steps = 0
 
         # return State.serialize(self.state()), {"env_state": "reset"}
-        return self.state_arr(), {}
+        return self.state, {}
+
+    def _randomize_ics(self):
+        self.ics = InitialConditions.from_random(n=self.config["rollout_length"], raise_ = False)
     
+    def _load_data(self) -> DataModel:
+        return DataModel(self.ics["name"], freqs=['daily', 'weekly', 'monthly'])
+
     @property
-    def out_of_data(self) -> bool:
-        if self.ind >= len(self.records) - 1:
+    def name(self):
+        return self.ics["name"]
+
+    def step(self, action: np.array):
+
+        self._process_action(action)
+        self._step_sim()
+
+        self.terminated = self._check_if_finished()
+        self.truncated = self.terminated and self.n_steps < self.config["rollout_length"]
+        self.infos = {}
+
+        return (
+            self.state,
+            self.reward,
+            self.terminated,
+            self.truncated,
+            self.infos
+        )
+
+    def _process_action(self, action: np.array):
+        """Processes a numpy action into the state"""
+        action = self.action_cls.from_array(action)
+
+        if action.buy:
+            if self.is_holding:  # duplicate buy
+                return
+            self.is_holding = True
+            self.history.append(BuyEvent(
+                date=self.cur_date,
+                price=self.data.get_price_on_open(self.cur_date)
+            ))
+
+        if action.sell:
+            if not self.is_holding:  # duplicate sell
+                return
+            
+            self.is_holding = False
+            self.history.append(SellEvent(
+                date=self.cur_date,
+                price=self.data.get_price_on_open(self.cur_date)
+            ))
+    
+    def _step_sim(self):
+        """Processes a sim step. Increments the data"""
+        self.cur_date = self.data.get_next_tick(self.state_cls.timeframe, self.cur_date)
+        self.n_steps += 1
+
+    def _check_if_finished(self):
+        """
+        Check if the sim has reached termination. This occurs if:
+
+            - the current date of data is the last day
+            - the rollout length has been reached
+
+        """
+        if self.cur_date == self.end_date:
+            return True
+        
+        if self.cur_date == self.data.end_date():
+            return True
+        
+        if self.n_steps == self.config["rollout_length"]:
             return True
         return False
     
-    def print_summary(self):
-        print(f"""Env Summary
-            date: {self.cur_date}
-            holding: {self.holding}
-            multiplier: {self.multiplier}
-            hold_multiplier: {self.hold_multiplier}
-        """) 
-
     @property
-    def cur_date(self) -> datetime.datetime:
-        return self.records[self.ind]["Date"]
-    
-    def _buy_step(self):
-        if self.holding:
-            print("Double Buy")
-            return
-        self.holding = True
-        self.buy_date = self.records[self.ind]["Date"]
-        self.buy_price = self.records[self.ind+1]["Open"]
+    def state(self) -> np.array:
+        """
+        Returns a state value.
+        The state is:
+
+            [STATE_ARR, holding] where holding is either 0 or 1
         
-    def _sell_step(self):
-        if not self.holding:
-            print("Double Sell")
-            return
-        self.sell_date = self.records[self.ind+1]["Date"]
-        self.sell_price = self.records[self.ind+1]["Open"]    
-        multiplier = self.sell_price / self.buy_price
-        self.multiplier *= multiplier
-        
-        self.history.append(Transaction({
-            "name": self.ics["name"],
-            "buy_date": self.buy_date,
-            "sell_date": self.sell_date,
-            "buy_price": self.buy_price,
-            "sell_price": self.sell_price,
-            "ticks_held": self.ticks_holding
-        }))
-        
-        # reset variables
-        self.holding = False
-        self.hold_multiplier = 1
-        self.buy_date = None
-        self.buy_price = None
-        self.sell_date = None
-        self.sell_price = None
-        self.ticks_holding = 0
-    
-    def _hold_step(self):
-        self.ticks_holding += 1
-        self.hold_multiplier = self.records[self.ind]["Close"]  / self.buy_price
+        """
 
-    def step(
-            self,
-            action: float
-    ):
-
-        self.dump("log.json")
-        buy, sell = action
-
-        # handle action
-        # step state
-        # terminate
-        # compute reward
-        # return observation
-        if self.out_of_data:
-            # ran out of data
-            terminated = True
-            truncated = True
-            reward = self.reward()
-            infos = {"history": self.history}
-            state_arr = self.state_arr()
-            return (
-                state_arr,
-                reward,
-                terminated,
-                truncated,
-                infos,
-            )
-
-        # buy
-        if self.ind < len(self.records) - 1 and buy > 0.5 and not self.holding and self.records[self.ind + 1]["Open"] > 0:
-            self._buy_step()
-
-            
-        # sell
-        elif sell > 0.5 and \
-                self.holding and \
-                self.ticks_holding > self.min_hold:
-            # print("Env Sell")
-            self._sell_step()
-            
-
-        elif self.holding:
-            self._hold_step()
-
-
-        # step the sim
-        self.ind += 1
-
-        terminated = False
-        truncated = False
-        reward = 0
-        infos = {"history": self.history}
-
-        # check if terminated
-        if any([
-            self.ind >= len(self.records) - 1,
-            self.ind >= self.rollout_length - 1
-        ]):
-            terminated = True
-            truncated = True if self.ind == len(self.records) - 1 else False
-            if self.holding:
-                cur_price = self.records[self.ind]["Close"]
-                multiplier = cur_price / self.buy_price
-                self.multiplier *= multiplier
-                self.history.append(Transaction({
-                    "name": self.ics["name"],
-                    "buy_date": self.buy_date,
-                    "sell_date": self.records[self.ind]["Date"],
-                    "buy_price": self.buy_price,
-                    "sell_price": cur_price,
-                    "ticks_held": self.ticks_holding,
-                }))
-
-            reward = self.get_reward()
-
-        state_arr = self.state_arr()
-        # print("Size:", state_arr.size)
-        return (
-            state_arr,
-            reward,
-            terminated,
-            truncated,
-            infos,
-        )
-    
-    def market_multiplier(self) -> float:
-        market_open = self.market_records[0]["Open"]
-        market_close = self.market_records[self.ind]["Close"]
-        return market_close / market_open
-
-    def reward(self):
-
-        reward =  self.multiplier * self.hold_multiplier - self.market_multiplier() - 0.02
-        if self.clip_reward:
-            return min([reward, self.clip_reward])
-    
-    def state(self) -> State:
-        try:
-            record = self.records[self.ind]
-        except IndexError:
-            return State.null()
-        
-        state: State = State({
-            "high": record["High"],
-            "low": record["Low"],
-            "open": record["Open"],
-            "close": record["Close"],
-            "volume": record["Volume"],
-            "bought": self.holding
-        })
-        
-        return state
-    
-    def state_arr(self) -> np.array:
-        state_arr = State.serialize(self.state())
-        if self.state_history_length > 0:
-            # print("if statement")
-            state_history_arr = np.concatenate([
-                State.serialize(s) for s in self.state_history(self.state_history_length)
-            ])
-            state_arr = np.concatenate([state_history_arr, state_arr])
-        
+        state_arr = self.state_cls(self.cur_date, self.data, self.config["state_history_length"]).array
+        state_arr = np.concatenate([
+            state_arr, np.array([float(self.is_holding)]),
+        ], dtype=np.float32)
         return state_arr
-
-    def state_history(self, length: int) -> list[State]:
-        og_ind = self.ind
-        states = []
-        for ind in range(self.ind - length, self.ind):
-            self.ind = ind
-            if ind < 0:
-                state = State.null()
-            else:
-                state = self.state()
-            states.append(state)
-        
-        self.ind = og_ind
-        return states
-
-    def end_date(self) -> datetime.datetime:
-        if len(self.records) <= self.rollout_length:
-            return self.records[-1]["Date"]
-        
-        return self.records[self.rollout_length]["Date"]
-
-    def dump(self, path: str):
-        """
-        Dumps to json
-        """
-        import json
-        f = open(path, "w")
-        json.dump({
-            "name": self.ics["name"],
-            "start_date": self.ics["date"],
-            "end_date": self.end_date(),
-            # "ics": self.ics,
-            "config": self.config,
-            "history": self.history,
-            "multiplier": self.multiplier,
-            "reward": self.reward(),
-            "market_multiplier": self.market_multiplier(),
-            "raw_index": self.raw_index
-        }, f, sort_keys=True, indent=4, default=str)
-        f.close()
-
     
+    @property
+    def reward(self) -> float:
+        """
+        Calculates a reward based on the history of the environment
+        """
+        reward = Reward(**{
+            "cur_date": self.cur_date,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "history": self.history,
+            "is_holding": self.is_holding,
+            "is_finished": self._check_if_finished(),
+            "ics": self.ics,
+            "data": self.data
+        })
+
+        return reward.value()
+
 

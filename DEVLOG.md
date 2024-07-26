@@ -1,3 +1,37 @@
+
+### 7-25
+I should definitely just cut off invalid environments for now, as they won't have enough data. I suppose i can pass that into the initial conditions - make sure there's enough data left over
+
+Ok almost have it training right now - i need to figure out why the state setting for stock env isn't working properly - kinda annoying
+
+It's traiing! Got a full training run overnight, results are underwhelming, which is to be expected. I think I'm good with the current state space representation - it should have enough information to at least do decently well
+
+TODO for next time:
+    - Figure out the state setting issue
+    - Make it so that train and inference pull from the same config file
+    - Make a composite reward class
+    - Move Action, Reward, CloseVolumeState out of the env
+    - Fix ticks held
+    - Model Iterations:
+        - I need a simple attention model as a baseline
+    - Reward Shaping
+        - reinstitute clipping
+        - Minimize number of trades
+        - Encourage longer holds
+        - Buy&HoldBaseline
+        - Definitely starting with shorter rollouts (curriculum learning reference https://docs.ray.io/en/latest/rllib/rllib-advanced-api.html)
+    - Action Space
+        - ??? Maybe a single bit action space
+    - Saving off Runs
+        - I could join (model)-(action)-(state)-(reward) clases together to name it and save to a csv, along with the checkpoint path
+    
+
+### 7-23
+
+Need to start running tests for the env and see what I'm missing. Should have close to evertyhing, just need to formalize Actions and Rewards
+
+
+
 ### 7-22
 
 Finished an initial thing for the State, just need to check to make sure that the env is working. I need to rework:
