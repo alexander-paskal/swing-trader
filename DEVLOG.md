@@ -1,3 +1,23 @@
+### 7-28
+
+Did some refactoring, can now write some configs. Next I want to:
+
+    1. Write a different env
+        1. Buy only action
+        2. Write the composite reward
+        3. New env
+    
+
+### 7-27
+
+Have an attention network that runs (i think?) I need to add residual connections to "ensure smooth gradient flow"
+
+Ok well it kind of trains but not really.
+
+What i need are some baselines to test models on.
+    1. Supervised Learning Test (Some toy dataset)
+    2. Reinforcement Learning Test (Cartpole or something)
+    3. More Difficult Reinforcement Learning Test
 
 ### 7-25
 I should definitely just cut off invalid environments for now, as they won't have enough data. I suppose i can pass that into the initial conditions - make sure there's enough data left over

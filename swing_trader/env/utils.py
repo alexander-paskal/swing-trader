@@ -5,10 +5,19 @@ from typing import *
 from datetime import datetime, timedelta
 from typing_extensions import Self
 from pandas.tseries.holiday import USFederalHolidayCalendar
+from dataclasses import dataclass
 
 HOLIDAYS = USFederalHolidayCalendar().holidays(start=datetime(1970,1,1), end=datetime.today())
 
-__all__ = ["Date", "weekdays_after"]
+__all__ = [
+    "Date",
+    "weekdays_after",
+    "BuyEvent",
+    "SellEvent",
+    "log_env",
+]
+
+
 
 class Date:
     """
@@ -142,6 +151,17 @@ def weekdays_after(start_date: Date, num_days: int):
             count += 1
     
     return day
+
+@dataclass
+class BuyEvent:
+    date: Date
+    price: float
+
+@dataclass
+class SellEvent:
+    date: Date
+    price: float
+    days_held: int = 0
 
 
 def log_env(env):

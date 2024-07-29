@@ -6,7 +6,7 @@ import numpy as np
 
 
 from swing_trader.env.env import StockEnv, Config, InitialConditions
-from train import CustomTorchModel
+from train import AttentionNetwork
 import datetime
 
 # Register the custom environment
@@ -16,7 +16,7 @@ register_env("CustomEnv-v0", lambda config: StockEnv(config))
 ray.init(num_cpus=1, num_gpus=0)
 
 # Load the trained model
-checkpoint_path = "C:/Users/alexc/ray_results/PPO_2024-07-26_07-44-44/PPO_StockEnv_739ae_00000_0_2024-07-26_07-44-44/checkpoint_000007"
+checkpoint_path = "C:/Users/alexc/ray_results/PPO_2024-07-27_17-42-35/PPO_StockEnv_23460_00000_0_2024-07-27_17-42-35/checkpoint_000010"
 loaded_algo = Algorithm.from_checkpoint(checkpoint_path)
 
 # get model
@@ -54,7 +54,7 @@ import time
 
 summaries = []
 
-for episode in range(10):
+for episode in range(30):
     obs, *_ = env.reset(randomize=True)
     done = False
     episode_reward = 0
@@ -78,6 +78,11 @@ for episode in range(10):
     })
     print(summaries[-1])
 
+
+print("Averages")
+vals = [s["performance"] - s["buy_and_hold"] for s in summaries]
+print("Average:", np.mean(vals))
+print("Variance:", np.var(vals))
 # for summary in summaries:
 #     print(summary)
 

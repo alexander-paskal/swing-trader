@@ -67,8 +67,11 @@ class Reward:
         self.is_holding: bool = kwargs["is_holding"]
 
     def value(self):
+
+        # num trades - factor this out
+        num_trades_penalty = 0.01 * len(self.history) // 2
         if not self.is_finished:
-            return 0
+            return num_trades_penalty
         
         history = self.history.copy()
         if len(self.history) % 2 == 1:
@@ -86,8 +89,13 @@ class Reward:
             assert isinstance(sell, SellEvent), "unordered sell"
             multiplier *= sell.price / buy.price
         
+        # reward clipping - factor this out
         if multiplier > 3:
             return 3
+        
+        # num trades penalty - factor this out
+        multiplier -= num_trades_penalty
+
         return multiplier
 
 
