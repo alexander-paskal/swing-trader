@@ -199,9 +199,6 @@ class StockEnv(gym.Env):
             config: Config, 
             *,
             ics: Optional[InitialConditions] = None, 
-            state_cls: Type[State] = State,
-            action_cls: Type[Action] = Action, 
-            reward_cls: Type[Reward] = Reward,
             
         ):
         self.config: Config = config
@@ -351,7 +348,7 @@ class StockEnv(gym.Env):
         """
         Calculates a reward based on the history of the environment
         """
-        reward = Reward(**{
+        reward = self.reward_cls(**{
             "cur_date": self.cur_date,
             "start_date": self.start_date,
             "end_date": self.end_date,
