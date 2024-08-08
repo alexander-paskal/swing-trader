@@ -1,6 +1,9 @@
-from swing_trader.env.states import DWMState, CompositeState, State
-from swing_trader.env.utils import Date, weekdays_after
+from swing_trader.env.states import DWMState, CompositeState, State, CloseVolumeState
+from swing_trader.env.rewards import Reward, PerformanceDifference
+from swing_trader.env.actions import Action, BuySellAction
+from swing_trader.env.utils import Date, weekdays_after, BuyEvent, SellEvent
 from swing_trader.env.data.data_model import DataModel
+
 import numpy as np
 from typing import *
 from typing_extensions import TypedDict, Self
@@ -23,82 +26,6 @@ __all__ = [
 ]
 
 
-@dataclass
-class BuyEvent:
-    date: Date
-    price: float
-
-@dataclass
-class SellEvent:
-    date: Date
-    price: float
-    days_held: int = 0
-
-class Reward:
-    def __init__(self, **kwargs):
-        # "cur_date": self.cur_date,
-        # "start_date": self.start_date,
-        # "end_date": self.end_date,
-        # "history": self.history,
-        # "is_holding": self.is_holding,
-        # "ics": self.ics,
-        # "data": self.data
-
-
-        if "data" not in kwargs:
-            raise ValueError("Reward needs data")
-        
-        if "cur_date" not in kwargs:
-            raise ValueError("Reward needs cur_date")
-        
-        if "history" not in kwargs:
-            raise ValueError("Reward needs history")
-        
-        if "is_finished" not in kwargs:
-            raise ValueError("Reward needs is_finished")
-        
-        if "is_holding" not in kwargs:
-            raise ValueError("Reward needs is_holding")
-
-        self.data: DataModel = kwargs["data"]
-        self.cur_date: Date = kwargs["cur_date"]
-        self.is_finished: Date = kwargs["is_finished"]
-        self.history: List[Union[BuyEvent, SellEvent]] = kwargs["history"]
-        self.is_holding: bool = kwargs["is_holding"]
-
-    def value(self):
-
-        # num trades - factor this out
-        num_trades_penalty = 0.01 * len(self.history) // 2
-        if not self.is_finished:
-            return num_trades_penalty
-        
-        history = self.history.copy()
-        if len(self.history) % 2 == 1:
-            current_price = self.data.access("daily", self.cur_date, length=1).loc[self.cur_date.as_timestamp, "Close"]
-            history.append(SellEvent(
-                date=self.cur_date,
-                price=current_price
-            ))
-        
-        multiplier = 1
-        for i in range(0, len(history), 2):
-            buy = history[i]
-            sell = history[i+1]
-            assert isinstance(buy, BuyEvent), "unordered buy"
-            assert isinstance(sell, SellEvent), "unordered sell"
-            multiplier *= sell.price / buy.price
-        
-        # reward clipping - factor this out
-        if multiplier > 3:
-            return 3
-        
-        # num trades penalty - factor this out
-        multiplier -= num_trades_penalty
-
-        return multiplier
-
-
 class Config(TypedDict):
     rollout_length: int
     market: str
@@ -106,33 +33,6 @@ class Config(TypedDict):
     state_history_length: int
     clip_reward: float
 
-
-class Action:
-    buy: bool
-    sell: bool
-    def __init__(self, buy: bool = False, sell: bool = False):
-        self.buy = buy
-        self.sell = sell
-    
-    def serialize(self) -> np.array:
-        return np.array([
-            float(self.buy),
-            float(self.sell)
-        ])
-
-    @classmethod
-    def from_array(cls, arr: np.array) -> Self:
-        d = {"buy": False, "sell": False}
-
-        if arr[0] > 0.5:
-            d["buy"] = True
-            return cls(**d)
-        
-        if arr[1] > 0.5:
-            d["sell"] = True
-            return cls(**d)
-
-        return cls(**d)
 
 DATA_DIR = "data/daily"
 
@@ -173,26 +73,14 @@ class InitialConditions(TypedDict):
         }
 
 
-
-class CloseVolumeState(CompositeState):
-
-    timeframe = "daily"
-
-    def __init__(self, date: Date, data: DataModel, ticks: int):
-
-        s1 = DWMState(date, data, {"column": "Close", "normalize": True, "ticks": ticks})
-        s2 = DWMState(date, data, {"column": "Volume", "log": True, "divide": 10, "ticks": ticks})
-        
-        super().__init__(s1, s2)
-
 class ConfigError(Exception):
     pass
 
 class StockEnv(gym.Env):
 
     state_cls: Type[State] = CloseVolumeState
-    action_cls: Type[Action] = Action
-    reward_cls: Type[Reward] = Reward
+    action_cls: Type[Action] = BuySellAction
+    reward_cls: Type[Reward] = PerformanceDifference
 
     def __init__(
             self,
@@ -212,6 +100,9 @@ class StockEnv(gym.Env):
         self.end_date: Date = None
         self.n_steps: int = 0
         self.history: List[Union[BuyEvent, SellEvent]] = []
+        self.reward_history: List[float] = []
+        self.action_history: List[Action] = []
+        self.state_history: List[State] = []
         self.is_holding: bool = False
 
         # self.set_state(state_cls)
@@ -272,6 +163,10 @@ class StockEnv(gym.Env):
         self.terminated = self._check_if_finished()
         self.truncated = self.terminated and self.n_steps < self.config["rollout_length"]
         self.infos = {}
+
+        self.state_history.append(self.state)
+        self.action_history.append(action)
+        self.reward_history.append(self.reward)
 
         return (
             self.state,
@@ -353,6 +248,9 @@ class StockEnv(gym.Env):
             "start_date": self.start_date,
             "end_date": self.end_date,
             "history": self.history,
+            "reward_history": self.reward_history,
+            "action_history": self.action_history,
+            "state_history": self.state_history,
             "is_holding": self.is_holding,
             "is_finished": self._check_if_finished(),
             "ics": self.ics,

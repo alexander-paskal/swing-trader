@@ -1,3 +1,4 @@
+from swing_trader.configs.buy_only_MLP import BuyOnlyEnv
 from swing_trader.env.env import *
 from swing_trader.env.data.data_model import NoDataException
 import gymnasium as gym
@@ -8,7 +9,7 @@ import random
 HISTORY = 40
 OBS_SPACE = HISTORY * 6 + 1
 config = Config(
-    rollout_length=10,
+    rollout_length=250,
     market="QQQ",
     min_hold=2,
     state_history_length=HISTORY,
@@ -18,8 +19,10 @@ config = Config(
 StockEnv.set_state(CloseVolumeState)
 
 def random_action():
-    return [random.random(), random.random()]
+    return [random.random()]
 
+def dont_buy():
+    return [0]
 
 def log_env(env: StockEnv):
     print(f"""
@@ -38,10 +41,10 @@ gym.logger.set_level(40)
 
 
 while True:
-    env = StockEnv(
+    env = BuyOnlyEnv(
         config=config,
         ics=InitialConditions.from_random(raise_=False, n=config["rollout_length"] + 10),
-        state_cls=CloseVolumeState
+        # state_cls=CloseVolumeState
     )
     try:
         state, _ = env.reset()
@@ -55,10 +58,12 @@ terminated = False
 log_env(env)
 while True:
     
-    action = random_action()
+    # action = random_action()
+    action = dont_buy()
     print(action)
     state_arr,reward,terminated,truncated,infos = env.step(action)
     log_env(env)
     
     if terminated:
         break
+

@@ -1,3 +1,59 @@
+### 8-7
+
+Did a bunch of stuff with stable baselines, I wanna get a train script going. Tasks for next time:
+- Fix the reward difference
+- plot the reward as part of the rollout script
+- write train3.py with a basic policy, no bells and whistles. Just the env
+
+
+### 8-3 
+
+Alright I have a stable baselines example going. My god it's incredibly simple. I'm gonna get a couple more examples going. Things I wanna figure out:
+
+- Learning Rate Schedule
+- Feature Extraction vs. Policy/Value Networks
+- Policy Kwargs
+- Hyperparameter Tuning
+- Imitation Learning
+- Weight Loading
+- Training in Jax
+- DONE Custom Model
+- DONE Custom Env
+- DONE Tensorboard
+- DONE Parallelized Rollouts (part of PPO?)
+- DONE Model Serialization
+- DONE Inference
+- DONE Callbacks
+
+I also want to set up a couple of simple tests for new model architectures
+- new "check_env" utitlization (which i think comes straight from gym)
+- Bit flipping env
+- DQN env
+
+Questions I have:
+- 
+
+### 8-2
+
+Upon further reflection, definitely gonna go with StableBaseines3. It's very clean and simple
+
+
+
+### 8-1
+
+Have the new environment training. Got a look at the reward distribution, which gives me more confidence, but the reward signal
+isn't strong enough to encourage the stock to trade. I need to inspect the value function in inference, though. That will be very useful to
+me to look at
+
+I also want to setup a supervised learning problem where i try to classify stocks that double or tripled in a given timeframe
+
+I may also start to consider using different frameworks such as:
+
+    ACTorch - https://github.com/lucadellalib/actorch
+    TorchRL
+    Sklr
+    StableBaselines3
+
 ### 7-28
 
 Did some refactoring, can now write some configs. Next I want to:
