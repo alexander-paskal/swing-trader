@@ -10,11 +10,11 @@ config = RunConfig(
     model_config={},
     env=StockEnv,
     env_config=Config(
-        rollout_length=200,
+        rollout_length=300,
         market="QQQ",
         min_hold=2,
         state_history_length=HISTORY,
-        action_space = 2,
+        action_space = 1,
         observation_space = OBS_SPACE
     ),
     num_cpus=2

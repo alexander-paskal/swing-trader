@@ -32,4 +32,5 @@ class RunConfig:
     # checkpointing
     checkpoint_frequency: int = 1 # how often to checkpoint
 
-    
+    # hyperparameters
+    max_grad_norm: float = 0.5

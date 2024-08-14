@@ -13,7 +13,6 @@ class Performance(Reward):
         # "ics": self.ics,
         # "data": self.data
 
-
         if "data" not in kwargs:
             raise ValueError("Reward needs data")
         
@@ -60,9 +59,9 @@ class Performance(Reward):
         
         # reward clipping - factor this out
         if multiplier > 3:
-            return 3
+            multiplier = 3
         
         # num trades penalty - factor this out
         # multiplier -= num_trades_penalty
 
-        return multiplier
+        return multiplier - 1

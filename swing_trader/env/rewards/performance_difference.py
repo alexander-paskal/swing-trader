@@ -7,18 +7,18 @@ class PerformanceDifference(Performance):
 
         super().__init__(**kwargs)
 
-        if "reward_history" not in kwargs:
-            raise ValueError("Reward needs reward_history")
+        if "performance_history" not in kwargs:
+            raise ValueError("Reward needs performance_history")
 
-        self.reward_history = kwargs['reward_history']
+        self.performance_history = kwargs['performance_history']
 
     def value(self) -> float:
 
         reward = super().value()
 
-        if len(self.reward_history) == 0:
-            return reward
+        if len(self.performance_history) == 0:
+            return 0
         
-        prev_reward = self.reward_history[-1]
+        prev_performance = self.performance_history[-1]
 
-        return reward - prev_reward
+        return reward - prev_performance

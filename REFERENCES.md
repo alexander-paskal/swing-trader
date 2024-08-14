@@ -10,3 +10,12 @@ config = PPOConfig().framework(
     torch_compile_worker_dynamo_backend="ipex",
     torch_compile_worker_dynamo_mode="default",
 )
+
+
+Dict ObservationsEnv
+https://stable-baselines3.readthedocs.io/en/master/guide/examples.html#dict-observations
+
+
+Off-Policy with SAC
+https://stable-baselines3.readthedocs.io/en/master/guide/examples.html#multiprocessing-with-off-policy-algorithms
+

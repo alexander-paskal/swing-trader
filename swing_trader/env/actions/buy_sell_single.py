@@ -1,7 +1,7 @@
 import numpy as np
 from typing_extensions import Self
 
-class BuySellAction:
+class BuySellSingleAction:
     buy: bool
     sell: bool
     def __init__(self, buy: bool = False, sell: bool = False):
@@ -10,8 +10,7 @@ class BuySellAction:
     
     def serialize(self) -> np.array:
         return np.array([
-            float(self.buy),
-            float(self.sell)
+            1 if self.buy else -1 if self.sell else 0,
         ])
 
     @classmethod
@@ -20,10 +19,7 @@ class BuySellAction:
 
         if arr[0] > 0:
             d["buy"] = True
-            return cls(**d)
-        
-        if arr[1] > 0:
+        elif arr[0] < 0:
             d["sell"] = True
-            return cls(**d)
-
+        
         return cls(**d)

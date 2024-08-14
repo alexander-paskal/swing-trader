@@ -1,6 +1,6 @@
 from swing_trader.env.states import DWMState, CompositeState, State, CloseVolumeState
 from swing_trader.env.rewards import Reward, PerformanceDifference
-from swing_trader.env.actions import Action, BuySellAction
+from swing_trader.env.actions import Action, BuySellAction, BuySellSingleAction
 from swing_trader.env.utils import Date, weekdays_after, BuyEvent, SellEvent
 from swing_trader.env.data.data_model import DataModel
 
@@ -79,7 +79,7 @@ class ConfigError(Exception):
 class StockEnv(gym.Env):
 
     state_cls: Type[State] = CloseVolumeState
-    action_cls: Type[Action] = BuySellAction
+    action_cls: Type[Action] = BuySellSingleAction
     reward_cls: Type[Reward] = PerformanceDifference
 
     def __init__(
@@ -103,6 +103,9 @@ class StockEnv(gym.Env):
         self.reward_history: List[float] = []
         self.action_history: List[Action] = []
         self.state_history: List[State] = []
+        self.performance_history: List[float] = []
+        self.date_history: List[Date] = []
+        self.price_history: List[float] = []
         self.is_holding: bool = False
 
         # self.set_state(state_cls)
@@ -127,7 +130,6 @@ class StockEnv(gym.Env):
     @classmethod
     def set_reward(cls, reward_cls: TypeVar):
         cls.reward_cls = reward_cls
-    
     
     def reset(self, *, seed=None, options=None, randomize: bool = True):
         if randomize:
@@ -167,6 +169,9 @@ class StockEnv(gym.Env):
         self.state_history.append(self.state)
         self.action_history.append(action)
         self.reward_history.append(self.reward)
+        self.performance_history.append(self.performance)
+        self.date_history.append(self.cur_date)
+        self.price_history.append(self.data.get_price_on_close(self.cur_date))
 
         return (
             self.state,
@@ -251,6 +256,8 @@ class StockEnv(gym.Env):
             "reward_history": self.reward_history,
             "action_history": self.action_history,
             "state_history": self.state_history,
+            "performance_history": self.performance_history,
+            "date_history": self.date_history,
             "is_holding": self.is_holding,
             "is_finished": self._check_if_finished(),
             "ics": self.ics,
@@ -258,5 +265,79 @@ class StockEnv(gym.Env):
         })
 
         return reward.value()
+    
+    @property
+    def performance(self) -> float:
+        """
+        Computes the performance based on the trade history
+        """
+        history = self.history.copy()
+        if len(self.history) % 2 == 1:
+            current_price = self.data.access("daily", self.cur_date, length=1).loc[self.cur_date.as_timestamp, "Close"]
+            history.append(SellEvent(
+                date=self.cur_date,
+                price=current_price
+            ))
+        
+        multiplier = 1
+        for i in range(0, len(history), 2):
+            buy = history[i]
+            sell = history[i+1]
+            assert isinstance(buy, BuyEvent), "unordered buy"
+            assert isinstance(sell, SellEvent), "unordered sell"
+            multiplier *= sell.price / buy.price
+
+        return multiplier - 1
 
 
+    def render(self):
+        """
+        Plots the performance
+        """
+        import matplotlib.pyplot as plt
+        plt.grid()
+        plt.tight_layout()
+        fig, axs = plt.subplots(2, 2)
+        axs = axs.flatten()
+
+        dates = [d.as_datetime for d in self.date_history]
+        axs[0].bar(dates, self.reward_history)
+        axs[0].set_title("Rewards")
+        axs[0].set_xticklabels([])
+        axs[0].grid()
+        axs[1].plot(dates, self.performance_history)
+        axs[1].set_title("Performance")
+        axs[1].set_xticklabels([])
+        axs[1].grid()
+        axs[2].plot(dates, self.price_history)
+        axs[2].set_title("Price")
+        axs[2].set_xticklabels(axs[2].get_xticklabels(), rotation=60)
+        axs[2].grid()
+
+        cum_rewards = [
+            sum(self.reward_history[:i+1]) for i in range(len(dates))
+        ]
+        axs[3].plot(dates, cum_rewards)
+        axs[3].set_title("Reward")
+        axs[3].set_xticklabels(axs[3].get_xticklabels(), rotation=60)
+        axs[3].grid()
+        
+        for event in self.history:
+            if isinstance(event, BuyEvent):
+                axs[2].scatter([event.date], [event.price], c="green")
+            elif isinstance(event, SellEvent):
+                axs[2].scatter([event.date], [event.price], c="red")
+
+        plt.show()
+
+    def print_out(self):
+        print(f"""
+    cur_date:  {self.cur_date}
+    end_date:  {self.end_date}
+    n_steps:   {self.n_steps}
+    history:   {self.history}
+    reward:    {self.reward}
+    next_open: {self.data.get_price_on_close(self.cur_date)}
+    is_holding:{self.is_holding}
+    state:     {None}
+         """)

@@ -1,5 +1,6 @@
 from swing_trader.model.base import Model
 import torch.nn as nn
+import torch
 
 
 
@@ -64,7 +65,7 @@ class AttentionNetwork(Model):
         h = self.attention_module(h)
         out = self.decoder(h)
         self.embedding = h
-        return out, state
+        return torch.clamp(out, -1, 1), state
     
     def value_function(self):
         val =  self.value_decoder(self.embedding)
