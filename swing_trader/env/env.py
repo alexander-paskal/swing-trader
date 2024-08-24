@@ -1,5 +1,5 @@
 from swing_trader.env.states import DWMState, CompositeState, State, CloseVolumeState
-from swing_trader.env.rewards import Reward, PerformanceDifference
+from swing_trader.env.rewards import Reward, PerformanceDifference, Performance
 from swing_trader.env.actions import Action, BuySellAction, BuySellSingleAction
 from swing_trader.env.utils import Date, weekdays_after, BuyEvent, SellEvent
 from swing_trader.env.data.data_model import DataModel
@@ -32,6 +32,7 @@ class Config(TypedDict):
     min_hold: int
     state_history_length: int
     clip_reward: float
+    scale_reward: float
 
 
 DATA_DIR = "data/daily"
@@ -264,7 +265,8 @@ class StockEnv(gym.Env):
             "data": self.data
         })
 
-        return reward.value()
+        scale = 1 if "scale_reward" not in self.config else self.config["scale_reward"]
+        return reward.value() * scale
     
     @property
     def performance(self) -> float:

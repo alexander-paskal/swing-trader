@@ -2,11 +2,12 @@
 Data Model contains all the data needed for the environment
 """
 import pandas as pd
+import numpy as np
 import os
 from typing import *
 from datetime import datetime
 from swing_trader.env.utils import Date, weekdays_after
-
+from typing_extensions import Self
 
 __all__ = ['DataModel', 'NoDataException']
 
@@ -20,6 +21,8 @@ class DataModel:
     monthly: pd.DataFrame
 
     data_path = "data"  # from root
+
+    _synthetic_data: Dict[str, pd.DataFrame] = None
 
     def __init__(self, ticker: os.PathLike, freqs: List[str], market: str = None):
 
@@ -36,12 +39,64 @@ class DataModel:
                 raise NoDataException(f"No data! {ticker} - {f}")
             df = self._clean(df)
             setattr(self, f, df)
-        
+    
+    @classmethod
+    def synthetic(cls, period: float = 100, amplitude: float = 20) -> Self:
+        """Generates synthetic sinusoidal data from 2000 to 2020"""
+        obj = cls.__new__(cls)
+        obj.ticker = "Synthetic"
+
+        if cls._synthetic_data is not None:
+            obj.__dict__.update(cls._synthetic_data)
+            return obj
+
+        points = np.linspace(0, 1, 5284)
+        vals = amplitude * np.sin(period * points ) + amplitude
+
+
+        logic = {'Open'  : 'first',
+                'High'  : 'max',
+                'Low'   : 'min',
+                'Close' : 'last',
+                'Volume': 'sum'}
+
+        daily = pd.read_csv(obj._csv_path("AAPL", "daily"))
+        daily = obj._clean(daily)
+        daily = daily[daily.index <= Date("2020-12-31").as_timestamp]
+        daily = daily[daily.index >= Date("2000-01-01").as_timestamp]
+
+        daily["Open"] = daily["High"] = daily["Close"] = daily["Low"] = vals
+
+        from pandas.tseries.frequencies import to_offset
+        weekly = daily.resample("W").apply(logic)
+        weekly.index -= to_offset("6D")
+
+
+        monthly = daily.resample("M").apply(logic)
+
+        new_dates = []
+        for i, date in enumerate(monthly.index):
+            new_date = pd.Timestamp(year=date.year, month=date.month, day=1)
+            new_dates.append(new_date)
+        monthly["Date"] = new_dates
+        monthly = monthly.set_index("Date")
+
+        obj.daily = daily
+        obj.weekly = weekly
+        obj.monthly = monthly
+
+        cls._synthetic_data = {
+            "daily": daily,
+            "weekly": weekly,
+            "monthly": monthly
+        }
+        return obj
     
     def _csv_path(self, ticker: str, freq: str) -> os.PathLike:
         return os.path.join(self.data_path, freq, f"{ticker}-{freq}.csv")
 
     def _clean(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Cleans the dataframe"""
         df = df[["Date", "Open", "High", "Low", "Close", "Volume"]]
         df = df.dropna()
 
@@ -114,7 +169,7 @@ class DataModel:
         return Date(ts2)
     
     def get_date_bounds(self, freq: Optional[str] = None) -> Tuple[Date, Date]:
-
+        """Returns the earliest and latest date contained within all specified frequencies. """
         if freq is None:
             freqs = ['daily', 'weekly', 'monthly']
         else:
@@ -132,6 +187,29 @@ class DataModel:
                 mins.append(min(df_dates))
         
         return Date(max(mins)), Date(min(maxs))
+
+    def set_date_bounds(self, start: Date, end: Date, freq: Optional[str] = None):
+        """Sets the date bounds (inclusive). Option to specify frequency"""
+        
+        start = Date(start)
+        end = Date(end)
+        
+        if freq is None:
+            freqs = ['daily', 'weekly', 'monthly']
+        else:
+            freqs = [freq]
+        
+        for freq in freqs:
+            if hasattr(self, freq):
+                df = getattr(self, freq)
+                
+                if df.empty:
+                    continue
+
+                df = df[df.index >= start.as_timestamp]
+                df = df[df.index <= end.as_timestamp]
+
+                setattr(self, freq, df)
     
     def buy_and_hold(self, start: Date, end: Date) -> float:
         return self.get_price_on_close(end) / self.get_price_on_open(start)
